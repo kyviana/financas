@@ -484,34 +484,36 @@ function DesktopApp({gastos,entradas,carregando,onAddGasto,onAddEntrada,onDelGas
   };
 
   return(
-    <div style={{minHeight:"100vh",background:C.bg,color:C.text,fontFamily:"'Georgia',serif",display:"flex",flexDirection:"column"}}>
+    <div style={{height:"100vh",background:C.bg,color:C.text,fontFamily:"'Georgia',serif",display:"flex",flexDirection:"column",overflow:"hidden"}}>
 
-      {/* ── Topbar ── */}
-      <div style={{borderBottom:`1px solid ${C.border}`,padding:"16px 36px",display:"flex",justifyContent:"space-between",alignItems:"center",background:C.surface}}>
-        <div style={{display:"flex",alignItems:"center",gap:20}}>
-          <h1 style={{fontFamily:"'Playfair Display',serif",fontSize:26,fontWeight:700,letterSpacing:"-0.5px",lineHeight:1}}>
+      {/* Topbar */}
+      <div style={{flexShrink:0,borderBottom:`1px solid ${C.border}`,padding:"12px 24px",display:"flex",justifyContent:"space-between",alignItems:"center",background:C.surface,flexWrap:"wrap",gap:8}}>
+        <div style={{display:"flex",alignItems:"center",gap:14}}>
+          <h1 style={{fontFamily:"'Playfair Display',serif",fontSize:22,fontWeight:700,letterSpacing:"-0.5px",lineHeight:1,whiteSpace:"nowrap"}}>
             Finanças <span style={{color:C.amber}}>Pessoais</span>
           </h1>
-          <div style={{width:1,height:22,background:C.border}}/>
-          <div style={{display:"flex",alignItems:"center",gap:7}}>
+          <div style={{width:1,height:20,background:C.border}}/>
+          <div style={{display:"flex",alignItems:"center",gap:6}}>
             <div style={{width:7,height:7,borderRadius:"50%",background:carregando?C.warn:C.amber,boxShadow:`0 0 8px ${carregando?C.warn:C.amber}`}}/>
-            <span style={{fontSize:12,color:C.muted,fontFamily:"'DM Mono',monospace"}}>{carregando?"sincronizando...":"ao vivo"}</span>
+            <span style={{fontSize:11,color:C.muted,fontFamily:"'DM Mono',monospace",whiteSpace:"nowrap"}}>{carregando?"sincronizando...":"ao vivo"}</span>
           </div>
         </div>
-        <div style={{display:"flex",alignItems:"center",gap:12}}>
-          <button onClick={()=>mudar(-1)} style={{background:C.bg,border:`1px solid ${C.border}`,color:C.muted,borderRadius:9,padding:"7px 16px",cursor:"pointer",fontSize:16,lineHeight:1}}>←</button>
-          <span style={{fontFamily:"'Playfair Display',serif",fontSize:20,minWidth:200,textAlign:"center"}}>{MESES[mes]} {ano}</span>
-          <button onClick={()=>mudar(1)} style={{background:C.bg,border:`1px solid ${C.border}`,color:C.muted,borderRadius:9,padding:"7px 16px",cursor:"pointer",fontSize:16,lineHeight:1}}>→</button>
-          <button onClick={()=>{setAbaForm("gasto");setShowForm(!showForm);}} style={{background:showForm&&abaForm==="gasto"?C.border2:C.white,color:C.bg,fontWeight:700,padding:"9px 22px",borderRadius:10,border:"none",fontSize:14,cursor:"pointer",transition:"all .2s"}}>
+        <div style={{display:"flex",alignItems:"center",gap:8,flexWrap:"wrap"}}>
+          <button onClick={()=>mudar(-1)} style={{background:C.bg,border:`1px solid ${C.border}`,color:C.muted,borderRadius:9,padding:"7px 14px",cursor:"pointer",fontSize:15,lineHeight:1}}>←</button>
+          <span style={{fontFamily:"'Playfair Display',serif",fontSize:17,minWidth:150,textAlign:"center",whiteSpace:"nowrap"}}>{MESES[mes]} {ano}</span>
+          <button onClick={()=>mudar(1)} style={{background:C.bg,border:`1px solid ${C.border}`,color:C.muted,borderRadius:9,padding:"7px 14px",cursor:"pointer",fontSize:15,lineHeight:1}}>→</button>
+          <div style={{width:1,height:20,background:C.border}}/>
+          <button onClick={()=>{setAbaForm("gasto");setShowForm(abaForm==="gasto"?!showForm:true);}} style={{background:showForm&&abaForm==="gasto"?C.border2:C.white,color:C.bg,fontWeight:700,padding:"8px 18px",borderRadius:10,border:"none",fontSize:13,cursor:"pointer",transition:"all .2s",whiteSpace:"nowrap"}}>
             {showForm&&abaForm==="gasto"?"✕ Fechar":"− Gasto"}
           </button>
-          <button onClick={()=>{setAbaForm("entrada");setShowForm(!showForm);}} style={{background:showForm&&abaForm==="entrada"?C.border2:C.amber,color:C.bg,fontWeight:700,padding:"9px 22px",borderRadius:10,border:"none",fontSize:14,cursor:"pointer",transition:"all .2s"}}>
+          <button onClick={()=>{setAbaForm("entrada");setShowForm(abaForm==="entrada"?!showForm:true);}} style={{background:showForm&&abaForm==="entrada"?C.border2:C.amber,color:C.bg,fontWeight:700,padding:"8px 18px",borderRadius:10,border:"none",fontSize:13,cursor:"pointer",transition:"all .2s",whiteSpace:"nowrap"}}>
             {showForm&&abaForm==="entrada"?"✕ Fechar":"+ Entrada"}
           </button>
         </div>
       </div>
 
-      <div style={{flex:1,padding:"24px 36px",display:"flex",flexDirection:"column",gap:20,overflowY:"auto"}}>
+      <div style={{flex:1,padding:"20px 24px",display:"flex",flexDirection:"column",gap:16,overflowY:"auto",minHeight:0}}>
+
 
         {/* ── Formulário ── */}
         {showForm&&(
@@ -594,7 +596,7 @@ function DesktopApp({gastos,entradas,carregando,onAddGasto,onAddEntrada,onDelGas
 
         {/* ── Grid principal: 3 colunas ── */}
         {/* Col 1: categorias + anual | Col 2: lançamentos (alto) | Col 3: saúde detalhada */}
-        <div style={{display:"grid",gridTemplateColumns:"300px 1fr 300px",gap:18,flex:1}}>
+        <div style={{display:"grid",gridTemplateColumns:"280px 1fr 280px",gap:16,minHeight:0}}>
 
           {/* Col 1 */}
           <div style={{display:"flex",flexDirection:"column",gap:18}}>
@@ -609,7 +611,7 @@ function DesktopApp({gastos,entradas,carregando,onAddGasto,onAddEntrada,onDelGas
           </div>
 
           {/* Col 2: lançamentos */}
-          <Card style={{padding:"20px 22px",display:"flex",flexDirection:"column"}}>
+          <Card style={{padding:"20px 22px",display:"flex",flexDirection:"column",minHeight:0,overflow:"hidden"}}>
             <p style={{fontFamily:"'Playfair Display',serif",fontSize:20,marginBottom:18}}>Lançamentos de {MESES[mes]}</p>
             <div style={{display:"grid",gridTemplateColumns:"2fr 1fr 1fr 90px 24px",gap:8,padding:"0 0 10px",borderBottom:`1px solid ${C.border}`}}>
               {["Descrição","Categoria","Data","Valor",""].map((h,i)=>(
