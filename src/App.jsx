@@ -1,4 +1,20 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
+import { initializeApp } from "firebase/app";
+import { getFirestore, collection, addDoc, deleteDoc, doc, onSnapshot, setDoc, getDoc } from "firebase/firestore";
+
+// Firebase config
+const firebaseConfig = {
+  apiKey: "AIzaSyDQhBVBogW5ww9b8bGRf9sDTLy0HLH2xAo",
+  authDomain: "financas-kpv.firebaseapp.com",
+  projectId: "financas-kpv",
+  storageBucket: "financas-kpv.firebasestorage.app",
+  messagingSenderId: "746701888550",
+  appId: "1:746701888550:web:d2689be734fee12ffa9ae7",
+  measurementId: "G-PPV1YVL19Z"
+};
+
+const firebaseApp = initializeApp(firebaseConfig);
+const db = getFirestore(firebaseApp);
 
 const CATEGORIAS = [
   { nome: "Alimentação", emoji: "🍽️", cor: "#4ade80" },
@@ -29,15 +45,13 @@ function BarChart({ categorias, gastos }) {
           <span style={{ width: 28, textAlign: "center", fontSize: 16 }}>{t.emoji}</span>
           <span style={{ width: 90, fontSize: 12, color: "#94a3b8", fontFamily: "monospace" }}>{t.nome}</span>
           <div style={{ flex: 1, background: "#1e293b", borderRadius: 6, height: 20, overflow: "hidden" }}>
-            <div
-              style={{
-                width: `${(t.total / max) * 100}%`,
-                background: `linear-gradient(90deg, ${t.cor}88, ${t.cor})`,
-                height: "100%",
-                borderRadius: 6,
-                transition: "width 0.6s cubic-bezier(.4,0,.2,1)",
-              }}
-            />
+            <div style={{
+              width: `${(t.total / max) * 100}%`,
+              background: `linear-gradient(90deg, ${t.cor}88, ${t.cor})`,
+              height: "100%",
+              borderRadius: 6,
+              transition: "width 0.6s cubic-bezier(.4,0,.2,1)",
+            }} />
           </div>
           <span style={{ width: 90, fontSize: 12, color: t.cor, textAlign: "right", fontFamily: "monospace" }}>
             {formatBRL(t.total)}
@@ -55,17 +69,30 @@ export default function App() {
   const hoje = new Date();
   const [mesAtual, setMesAtual] = useState(hoje.getMonth());
   const [anoAtual, setAnoAtual] = useState(hoje.getFullYear());
-  const [gastos, setGastos] = useState([
-    { id: 1, descricao: "Supermercado", valor: 320, categoria: "Alimentação", data: `${hoje.getFullYear()}-${String(hoje.getMonth()+1).padStart(2,'0')}-05` },
-    { id: 2, descricao: "Uber", valor: 45, categoria: "Transporte", data: `${hoje.getFullYear()}-${String(hoje.getMonth()+1).padStart(2,'0')}-07` },
-    { id: 3, descricao: "Netflix", valor: 39.9, categoria: "Lazer", data: `${hoje.getFullYear()}-${String(hoje.getMonth()+1).padStart(2,'0')}-01` },
-    { id: 4, descricao: "Aluguel", valor: 1200, categoria: "Moradia", data: `${hoje.getFullYear()}-${String(hoje.getMonth()+1).padStart(2,'0')}-05` },
-  ]);
-  const [renda, setRenda] = useState(4000);
+  const [gastos, setGastos] = useState([]);
+  const [renda, setRenda] = useState(0);
   const [form, setForm] = useState({ descricao: "", valor: "", categoria: "Alimentação", data: hoje.toISOString().split("T")[0] });
   const [editandoRenda, setEditandoRenda] = useState(false);
   const [rendaTemp, setRendaTemp] = useState("");
   const [mostrarForm, setMostrarForm] = useState(false);
+  const [carregando, setCarregando] = useState(true);
+
+  // Carregar gastos em tempo real
+  useEffect(() => {
+    const unsub = onSnapshot(collection(db, "gastos"), (snapshot) => {
+      const dados = snapshot.docs.map(d => ({ id: d.id, ...d.data() }));
+      setGastos(dados);
+      setCarregando(false);
+    });
+    return () => unsub();
+  }, []);
+
+  // Carregar renda
+  useEffect(() => {
+    getDoc(doc(db, "config", "renda")).then((d) => {
+      if (d.exists()) setRenda(d.data().valor);
+    });
+  }, []);
 
   const gastosMes = useMemo(() =>
     gastos.filter((g) => {
@@ -77,16 +104,25 @@ export default function App() {
 
   const totalGastos = gastosMes.reduce((s, g) => s + g.valor, 0);
   const saldo = renda - totalGastos;
-  const pct = Math.min((totalGastos / renda) * 100, 100);
+  const pct = renda > 0 ? Math.min((totalGastos / renda) * 100, 100) : 0;
 
-  const addGasto = () => {
+  const addGasto = async () => {
     if (!form.descricao || !form.valor || isNaN(parseFloat(form.valor))) return;
-    setGastos([...gastos, { ...form, id: Date.now(), valor: parseFloat(form.valor) }]);
+    await addDoc(collection(db, "gastos"), { ...form, valor: parseFloat(form.valor) });
     setForm({ descricao: "", valor: "", categoria: "Alimentação", data: hoje.toISOString().split("T")[0] });
     setMostrarForm(false);
   };
 
-  const removerGasto = (id) => setGastos(gastos.filter((g) => g.id !== id));
+  const removerGasto = async (id) => {
+    await deleteDoc(doc(db, "gastos", id));
+  };
+
+  const salvarRenda = async (novaRenda) => {
+    const val = parseFloat(novaRenda) || renda;
+    setRenda(val);
+    await setDoc(doc(db, "config", "renda"), { valor: val });
+    setEditandoRenda(false);
+  };
 
   const mudarMes = (dir) => {
     let m = mesAtual + dir;
@@ -101,13 +137,7 @@ export default function App() {
   const corBarra = pct > 85 ? "#f87171" : pct > 60 ? "#fb923c" : "#4ade80";
 
   return (
-    <div style={{
-      minHeight: "100vh",
-      background: "#0a0f1e",
-      fontFamily: "'Georgia', serif",
-      color: "#e2e8f0",
-      padding: "24px 16px",
-    }}>
+    <div style={{ minHeight: "100vh", background: "#0a0f1e", fontFamily: "'Georgia', serif", color: "#e2e8f0", padding: "24px 16px" }}>
       <style>{`
         @import url('https://fonts.googleapis.com/css2?family=Playfair+Display:wght@600;700&family=DM+Mono:wght@400;500&display=swap');
         * { box-sizing: border-box; margin: 0; padding: 0; }
@@ -122,7 +152,7 @@ export default function App() {
         .input-style { background: #1e293b; border: 1px solid #334155; border-radius: 10px; padding: 10px 14px; color: #e2e8f0; font-size: 14px; width: 100%; transition: border .2s; font-family: 'DM Mono', monospace; }
         .input-style:focus { border-color: #4ade80; }
         .tag { display: inline-flex; align-items: center; gap: 4px; padding: 3px 10px; border-radius: 20px; font-size: 11px; font-family: 'DM Mono', monospace; }
-        .row-gasto { display: flex; align-items: center; gap: 10px; padding: 12px 0; border-bottom: 1px solid #1e293b; transition: background .15s; }
+        .row-gasto { display: flex; align-items: center; gap: 10px; padding: 12px 0; border-bottom: 1px solid #1e293b; }
         .row-gasto:last-child { border-bottom: none; }
         .del-btn { opacity: 0; transition: opacity .2s; background: transparent; color: #f87171; font-size: 16px; padding: 2px 6px; border-radius: 6px; }
         .row-gasto:hover .del-btn { opacity: 1; }
@@ -136,7 +166,9 @@ export default function App() {
             <h1 style={{ fontFamily: "'Playfair Display', serif", fontSize: 26, fontWeight: 700, lineHeight: 1.1 }}>
               Controle <span style={{ color: "#4ade80" }}>Financeiro</span>
             </h1>
-            <p style={{ color: "#475569", fontSize: 12, marginTop: 4, fontFamily: "'DM Mono', monospace" }}>pessoal · {anoAtual}</p>
+            <p style={{ color: "#475569", fontSize: 12, marginTop: 4, fontFamily: "'DM Mono', monospace" }}>
+              pessoal · {anoAtual} {carregando && "· sincronizando..."}
+            </p>
           </div>
           <button className="btn-primary" onClick={() => setMostrarForm(!mostrarForm)}>
             {mostrarForm ? "✕ Cancelar" : "+ Adicionar"}
@@ -168,15 +200,15 @@ export default function App() {
                     style={{ textAlign: "center", fontSize: 13 }}
                     value={rendaTemp}
                     onChange={e => setRendaTemp(e.target.value)}
-                    onKeyDown={e => { if (e.key === "Enter") { setRenda(parseFloat(rendaTemp) || renda); setEditandoRenda(false); }}}
+                    onKeyDown={e => { if (e.key === "Enter") salvarRenda(rendaTemp); }}
                     autoFocus
                   />
-                  <button className="btn-ghost" style={{ fontSize: 11 }} onClick={() => { setRenda(parseFloat(rendaTemp) || renda); setEditandoRenda(false); }}>ok</button>
+                  <button className="btn-ghost" style={{ fontSize: 11 }} onClick={() => salvarRenda(rendaTemp)}>ok</button>
                 </div>
               ) : (
                 <p
                   style={{ fontSize: 15, fontWeight: 700, color: item.cor, fontFamily: "'DM Mono', monospace", cursor: item.editar ? "pointer" : "default" }}
-                  onClick={() => { if (item.editar) { setRendaTemp(String(renda)); setEditandoRenda(true); }}}
+                  onClick={() => { if (item.editar) { setRendaTemp(String(renda)); setEditandoRenda(true); } }}
                   title={item.editar ? "Clique para editar" : ""}
                 >
                   {formatBRL(item.valor)}
@@ -213,19 +245,20 @@ export default function App() {
           </div>
         )}
 
-        {/* Gráfico por categoria */}
+        {/* Gráfico */}
         <div className="card">
           <p style={{ fontFamily: "'Playfair Display', serif", fontSize: 16, marginBottom: 16 }}>Por categoria</p>
           <BarChart categorias={CATEGORIAS} gastos={gastosMes} />
         </div>
 
-        {/* Lista de gastos */}
+        {/* Lista */}
         <div className="card">
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
             <p style={{ fontFamily: "'Playfair Display', serif", fontSize: 16 }}>Lançamentos</p>
             <span style={{ fontSize: 11, color: "#475569", fontFamily: "'DM Mono', monospace" }}>{gastosMes.length} itens</span>
           </div>
-          {gastosMes.length === 0 && (
+          {carregando && <p style={{ color: "#475569", fontSize: 13, textAlign: "center", padding: "20px 0" }}>Carregando...</p>}
+          {!carregando && gastosMes.length === 0 && (
             <p style={{ color: "#475569", fontSize: 13, textAlign: "center", padding: "20px 0" }}>Nenhum lançamento este mês</p>
           )}
           {[...gastosMes].sort((a, b) => new Date(b.data) - new Date(a.data)).map((g) => {
