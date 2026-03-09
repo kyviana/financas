@@ -14,546 +14,697 @@ const firebaseConfig = {
 const firebaseApp = initializeApp(firebaseConfig);
 const db = getFirestore(firebaseApp);
 
-const AMBER = "#f59e0b";
-const AMBER_BRIGHT = "#fbbf24";
-const AMBER_DIM = "#78350f";
+const C = {
+  bg:"#080808", surface:"#101010", surface2:"#141414", border:"#1f1f1f", border2:"#282828",
+  text:"#f2f2f2", muted:"#606060", muted2:"#383838",
+  amber:"#f59e0b", amberLo:"#f59e0b1a", amberMid:"#f59e0b44",
+  warn:"#fb923c", danger:"#ef4444", white:"#ffffff",
+};
 
-const CAT_GASTOS = [
-  { nome: "Alimentação", emoji: "🍽️" },
-  { nome: "Transporte", emoji: "🚌" },
-  { nome: "Lazer", emoji: "🎮" },
-  { nome: "Saúde", emoji: "💊" },
-  { nome: "Moradia", emoji: "🏠" },
-  { nome: "Educação", emoji: "📚" },
-  { nome: "Outros", emoji: "📦" },
+const CATS_GASTO = [
+  {nome:"Alimentação",emoji:"🍽️"},{nome:"Transporte",emoji:"🚌"},
+  {nome:"Lazer",emoji:"🎮"},{nome:"Saúde",emoji:"💊"},
+  {nome:"Moradia",emoji:"🏠"},{nome:"Educação",emoji:"📚"},{nome:"Outros",emoji:"📦"},
 ];
-
-const CAT_ENTRADAS = [
-  { nome: "Salário", emoji: "💼" },
-  { nome: "Freela", emoji: "🖥️" },
-  { nome: "Investimento", emoji: "📈" },
-  { nome: "Presente", emoji: "🎁" },
-  { nome: "Outros", emoji: "💰" },
+const CATS_ENTRADA = [
+  {nome:"Salário",emoji:"💼"},{nome:"Freelance",emoji:"💻"},
+  {nome:"Investimento",emoji:"📈"},{nome:"Presente",emoji:"🎁"},{nome:"Outros",emoji:"📦"},
 ];
 
 const MESES = ["Janeiro","Fevereiro","Março","Abril","Maio","Junho","Julho","Agosto","Setembro","Outubro","Novembro","Dezembro"];
-const MESES_SHORT = ["Jan","Fev","Mar","Abr","Mai","Jun","Jul","Ago","Set","Out","Nov","Dez"];
+const MS    = ["Jan","Fev","Mar","Abr","Mai","Jun","Jul","Ago","Set","Out","Nov","Dez"];
 
-const fBRL = (v) => v.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
-const fShort = (v) => v >= 1000 ? `R$${(v/1000).toFixed(1)}k` : `R$${v.toFixed(0)}`;
+const fBRL   = v => v.toLocaleString("pt-BR",{style:"currency",currency:"BRL"});
+const fShort = v => v>=1000?`R$${(v/1000).toFixed(1)}k`:`R$${v.toFixed(0)}`;
 
-function useIsMobile() {
-  const [m, setM] = useState(window.innerWidth < 768);
-  useEffect(() => {
-    const fn = () => setM(window.innerWidth < 768);
-    window.addEventListener("resize", fn);
-    return () => window.removeEventListener("resize", fn);
-  }, []);
+function useIsMobile(){
+  const [m,setM]=useState(window.innerWidth<768);
+  useEffect(()=>{const fn=()=>setM(window.innerWidth<768);window.addEventListener("resize",fn);return()=>window.removeEventListener("resize",fn);},[]);
   return m;
 }
 
-function saude(pct) {
-  if (pct <= 60) return { label: "Saudável", cor: "#ffffff", bg: "#ffffff18", icon: "✦", msg: "Ótimo controle! Você está bem abaixo do limite." };
-  if (pct <= 80) return { label: "Razoável", cor: AMBER, bg: AMBER + "22", icon: "◈", msg: "Atenção: mais da metade da renda já foi comprometida." };
-  if (pct <= 95) return { label: "Alerta", cor: "#f97316", bg: "#f9731622", icon: "⚠", msg: "Gastos elevados! Considere revisar suas despesas." };
-  return { label: "Crítico", cor: "#ef4444", bg: "#ef444422", icon: "✕", msg: "Gastos ultrapassaram (ou estão próximos de) sua renda!" };
+function getSaude(pct,saldo){
+  if(pct<=60)  return{label:"Saudável",  cor:C.amber, icon:"✦",msg:"Ótimo controle! Você está bem abaixo do limite."};
+  if(pct<=80)  return{label:"Razoável",  cor:C.warn,  icon:"◈",msg:"Atenção: mais de 60% da renda comprometida."};
+  if(pct<=100) return{label:"Crítico",   cor:C.danger,icon:"⚠",msg:"Limite quase atingido! Reduza gastos agora."};
+  return              {label:"Estourado",cor:C.danger,icon:"🔴",msg:`Saldo negativo de ${fBRL(Math.abs(saldo))}!`};
 }
 
-// ─── BARCHART ─────────────────────────────────────────────
-function BarChart({ gastos }) {
-  const totais = CAT_GASTOS.map(cat => ({
-    ...cat,
-    total: gastos.filter(g => g.categoria === cat.nome).reduce((s, g) => s + g.valor, 0),
-  })).filter(t => t.total > 0).sort((a, b) => b.total - a.total);
-  const max = Math.max(...totais.map(t => t.total), 1);
-  if (!totais.length) return <p style={emptyStyle}>Nenhum gasto registrado</p>;
-  return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 11 }}>
-      {totais.map(t => (
-        <div key={t.nome} style={{ display: "flex", alignItems: "center", gap: 10 }}>
-          <span style={{ width: 22, textAlign: "center", fontSize: 13 }}>{t.emoji}</span>
-          <span style={{ width: 90, fontSize: 12, color: "#666", fontFamily: "'DM Mono', monospace" }}>{t.nome}</span>
-          <div style={{ flex: 1, background: "#1a1a1a", borderRadius: 4, height: 16, overflow: "hidden" }}>
-            <div style={{ width: `${(t.total / max) * 100}%`, background: `linear-gradient(90deg, ${AMBER_DIM}, ${AMBER})`, height: "100%", borderRadius: 4, transition: "width 0.7s cubic-bezier(.4,0,.2,1)" }} />
+// ── Shared UI ────────────────────────────────────────────
+function Card({children,style={},amber=false}){
+  return <div style={{background:C.surface,border:`1px solid ${amber?C.amber+"33":C.border}`,borderRadius:16,...style}}>{children}</div>;
+}
+function Label({children}){
+  return <p style={{fontSize:12,color:C.muted,fontFamily:"'DM Mono',monospace",textTransform:"uppercase",letterSpacing:"0.1em",marginBottom:8}}>{children}</p>;
+}
+
+// ── BarChart ──────────────────────────────────────────────
+function BarChart({gastos}){
+  const totais=CATS_GASTO.map(c=>({...c,total:gastos.filter(g=>g.categoria===c.nome).reduce((s,g)=>s+g.valor,0)})).filter(t=>t.total>0).sort((a,b)=>b.total-a.total);
+  const max=Math.max(...totais.map(t=>t.total),1);
+  if(!totais.length) return <p style={{color:C.muted,textAlign:"center",fontSize:14,padding:"24px 0"}}>Nenhum gasto registrado</p>;
+  return(
+    <div style={{display:"flex",flexDirection:"column",gap:12}}>
+      {totais.map(t=>(
+        <div key={t.nome} style={{display:"flex",alignItems:"center",gap:10}}>
+          <span style={{width:24,textAlign:"center",fontSize:16}}>{t.emoji}</span>
+          <span style={{width:96,fontSize:13,color:C.muted,fontFamily:"'DM Mono',monospace"}}>{t.nome}</span>
+          <div style={{flex:1,background:C.border,borderRadius:4,height:18,overflow:"hidden"}}>
+            <div style={{width:`${(t.total/max)*100}%`,background:`linear-gradient(90deg,${C.amberMid},${C.amber})`,height:"100%",borderRadius:4,transition:"width .7s cubic-bezier(.4,0,.2,1)"}}/>
           </div>
-          <span style={{ width: 82, fontSize: 11, color: AMBER, textAlign: "right", fontFamily: "'DM Mono', monospace" }}>{fBRL(t.total)}</span>
+          <span style={{width:88,fontSize:12,color:C.amber,textAlign:"right",fontFamily:"'DM Mono',monospace"}}>{fBRL(t.total)}</span>
         </div>
       ))}
     </div>
   );
 }
 
-// ─── ANUAL ────────────────────────────────────────────────
-function AnualChart({ gastos, entradas }) {
-  const hoje = new Date();
-  const ano = hoje.getFullYear();
-  const dados = MESES_SHORT.map((m, i) => {
-    const g = gastos.filter(x => { const d = new Date(x.data+"T12:00:00"); return d.getMonth()===i && d.getFullYear()===ano; }).reduce((s,x) => s+x.valor, 0);
-    const e = entradas.filter(x => { const d = new Date(x.data+"T12:00:00"); return d.getMonth()===i && d.getFullYear()===ano; }).reduce((s,x) => s+x.valor, 0);
-    return { mes: m, indice: i, gastos: g, entradas: e };
-  });
-  const max = Math.max(...dados.map(d => Math.max(d.gastos, d.entradas)), 1);
-  const mesAtual = hoje.getMonth();
-  return (
-    <div style={{ display: "flex", alignItems: "flex-end", gap: 5, height: 130, padding: "0 2px" }}>
-      {dados.map(d => {
-        const hG = Math.max((d.gastos / max) * 100, d.gastos > 0 ? 3 : 0);
-        const hE = Math.max((d.entradas / max) * 100, d.entradas > 0 ? 3 : 0);
-        const isCurrent = d.indice === mesAtual;
-        return (
-          <div key={d.mes} style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", gap: 3 }}>
-            <div style={{ width: "100%", height: 100, display: "flex", alignItems: "flex-end", gap: 1 }}>
-              <div title={`Entradas: ${fBRL(d.entradas)}`} style={{ flex: 1, height: `${hE}%`, minHeight: d.entradas > 0 ? 3 : 0, background: isCurrent ? AMBER : AMBER+"55", borderRadius: "3px 3px 1px 1px", transition: "height 0.6s" }} />
-              <div title={`Gastos: ${fBRL(d.gastos)}`} style={{ flex: 1, height: `${hG}%`, minHeight: d.gastos > 0 ? 3 : 0, background: isCurrent ? "#fff" : "#ffffff33", borderRadius: "3px 3px 1px 1px", transition: "height 0.6s" }} />
+// ── AnualChart ────────────────────────────────────────────
+function AnualChart({gastos,entradas}){
+  const ano=new Date().getFullYear(), mc=new Date().getMonth();
+  const dados=MS.map((m,i)=>({
+    m,i,
+    renda:entradas.filter(e=>{const d=new Date(e.data+"T12:00:00");return d.getMonth()===i&&d.getFullYear()===ano;}).reduce((s,e)=>s+e.valor,0),
+    gasto:gastos.filter(g=>{const d=new Date(g.data+"T12:00:00");return d.getMonth()===i&&d.getFullYear()===ano;}).reduce((s,g)=>s+g.valor,0),
+  }));
+  const max=Math.max(...dados.map(d=>Math.max(d.renda,d.gasto)),1);
+  return(
+    <div>
+      <div style={{display:"flex",gap:16,marginBottom:14}}>
+        {[{cor:C.amber,label:"entradas"},{cor:C.muted2,label:"gastos"}].map(l=>(
+          <div key={l.label} style={{display:"flex",alignItems:"center",gap:6}}><div style={{width:10,height:10,background:l.cor,borderRadius:2}}/><span style={{fontSize:12,color:C.muted,fontFamily:"'DM Mono',monospace"}}>{l.label}</span></div>
+        ))}
+      </div>
+      <div style={{display:"flex",alignItems:"flex-end",gap:4,height:110}}>
+        {dados.map(d=>{
+          const hR=Math.max((d.renda/max)*88,d.renda>0?3:0);
+          const hG=Math.max((d.gasto/max)*88,d.gasto>0?3:0);
+          const cur=d.i===mc;
+          return(
+            <div key={d.m} style={{flex:1,display:"flex",flexDirection:"column",alignItems:"center",gap:5}}>
+              <div style={{width:"100%",height:88,display:"flex",alignItems:"flex-end",gap:1}}>
+                <div style={{flex:1,height:hR,background:cur?C.amber:C.amberMid,borderRadius:"3px 3px 1px 1px",transition:"height .6s"}}/>
+                <div style={{flex:1,height:hG,background:cur?"#555":C.muted2,borderRadius:"3px 3px 1px 1px",transition:"height .6s"}}/>
+              </div>
+              <span style={{fontSize:10,color:cur?C.white:C.muted2,fontFamily:"'DM Mono',monospace",fontWeight:cur?700:400}}>{d.m}</span>
             </div>
-            <span style={{ fontSize: 9, color: isCurrent ? "#e2e8f0" : "#444", fontFamily: "'DM Mono', monospace", fontWeight: isCurrent ? 700 : 400 }}>{d.mes}</span>
-          </div>
-        );
-      })}
+          );
+        })}
+      </div>
     </div>
   );
 }
 
-const emptyStyle = { color: "#444", textAlign: "center", fontSize: 13, padding: "20px 0" };
+// ── PainelSaude ───────────────────────────────────────────
+function PainelSaude({pct,saldo,gastosMes,renda}){
+  const s=getSaude(pct,saldo);
+  const top=CATS_GASTO.map(c=>({...c,total:gastosMes.filter(g=>g.categoria===c.nome).reduce((a,g)=>a+g.valor,0)})).sort((a,b)=>b.total-a.total).filter(c=>c.total>0).slice(0,3);
+  return(
+    <div style={{display:"flex",flexDirection:"column",gap:18}}>
+      {/* Status badge */}
+      <div style={{display:"flex",alignItems:"center",gap:14,padding:"18px 20px",background:s.cor+"14",border:`1px solid ${s.cor}44`,borderRadius:14}}>
+        <div style={{width:44,height:44,borderRadius:"50%",background:s.cor+"22",border:`2px solid ${s.cor}`,display:"flex",alignItems:"center",justifyContent:"center",fontSize:20,flexShrink:0}}>{s.icon}</div>
+        <div>
+          <p style={{fontSize:12,color:C.muted,fontFamily:"'DM Mono',monospace",textTransform:"uppercase",letterSpacing:"0.12em",marginBottom:4}}>saúde financeira</p>
+          <p style={{fontSize:22,fontWeight:700,color:s.cor,fontFamily:"'Playfair Display',serif",lineHeight:1}}>{s.label}</p>
+        </div>
+        <div style={{marginLeft:"auto",textAlign:"right"}}>
+          <p style={{fontSize:12,color:C.muted,fontFamily:"'DM Mono',monospace",marginBottom:3}}>{pct.toFixed(1)}% comprometido</p>
+          <p style={{fontSize:13,color:C.muted,fontFamily:"'DM Mono',monospace"}}>{s.msg}</p>
+        </div>
+      </div>
 
-// ─── MODAL MOBILE ─────────────────────────────────────────
-function ModalMobile({ tipo, onClose, onSave }) {
-  const hoje = new Date().toISOString().split("T")[0];
-  const cats = tipo === "gasto" ? CAT_GASTOS : CAT_ENTRADAS;
-  const [form, setForm] = useState({ descricao: tipo === "entrada" ? cats[0].nome : "", valor: "", categoria: cats[0].nome, data: hoje });
-  const salvar = () => {
-    if (!form.valor || isNaN(parseFloat(form.valor))) return;
-    onSave({ ...form, descricao: form.descricao || form.categoria, valor: parseFloat(form.valor) });
+      {/* Medidor */}
+      <Card style={{padding:"16px 20px"}}>
+        <Label>comprometimento da renda</Label>
+        <div style={{background:C.border,borderRadius:99,height:10,position:"relative",overflow:"hidden"}}>
+          <div style={{position:"absolute",left:"60%",top:0,bottom:0,width:1,background:C.border2,zIndex:1}}/>
+          <div style={{position:"absolute",left:"80%",top:0,bottom:0,width:1,background:C.border2,zIndex:1}}/>
+          <div style={{width:`${Math.min(pct,100)}%`,background:`linear-gradient(90deg,${C.amber},${s.cor})`,height:"100%",transition:"width .6s"}}/>
+        </div>
+        <div style={{display:"flex",justifyContent:"space-between",marginTop:6}}>
+          {["livre","60% ótimo","80% alerta","crítico"].map(l=><span key={l} style={{fontSize:10,color:C.muted2,fontFamily:"'DM Mono',monospace"}}>{l}</span>)}
+        </div>
+      </Card>
+
+      {/* Top categorias */}
+      {top.length>0&&(
+        <Card style={{padding:"16px 20px"}}>
+          <Label>maiores gastos do mês</Label>
+          <div style={{display:"flex",flexDirection:"column",gap:10}}>
+            {top.map((c,i)=>(
+              <div key={c.nome} style={{display:"flex",alignItems:"center",gap:10}}>
+                <span style={{fontSize:12,color:C.muted2,fontFamily:"'DM Mono',monospace",width:18}}>#{i+1}</span>
+                <span style={{fontSize:17}}>{c.emoji}</span>
+                <span style={{flex:1,fontSize:14,color:C.text}}>{c.nome}</span>
+                <span style={{fontSize:14,color:C.amber,fontFamily:"'DM Mono',monospace"}}>{fBRL(c.total)}</span>
+                {renda>0&&<span style={{fontSize:12,color:C.muted,fontFamily:"'DM Mono',monospace",width:36,textAlign:"right"}}>{((c.total/renda)*100).toFixed(0)}%</span>}
+              </div>
+            ))}
+          </div>
+        </Card>
+      )}
+
+      {/* 50/30/20 */}
+      <Card style={{padding:"16px 20px"}}>
+        <Label>regra 50 · 30 · 20</Label>
+        <div style={{display:"flex",gap:8}}>
+          {[{label:"Essencial",pct:50},{label:"Lazer",pct:30},{label:"Reserva",pct:20}].map(r=>(
+            <div key={r.label} style={{flex:1,background:C.border,borderRadius:10,padding:"10px 0",textAlign:"center"}}>
+              <p style={{fontSize:11,color:C.muted,fontFamily:"'DM Mono',monospace",marginBottom:5}}>{r.label}</p>
+              <p style={{fontSize:18,color:C.amber,fontFamily:"'DM Mono',monospace",fontWeight:700}}>{r.pct}%</p>
+              <p style={{fontSize:11,color:C.muted2,fontFamily:"'DM Mono',monospace",marginTop:4}}>{fBRL(renda*r.pct/100)}</p>
+            </div>
+          ))}
+        </div>
+      </Card>
+    </div>
+  );
+}
+
+// ── ListaLancamentos ──────────────────────────────────────
+function ListaLancamentos({gastosMes,entradasMes,carregando,onDelGasto,onDelEntrada}){
+  const [aba,setAba]=useState("gastos");
+  const totalG=gastosMes.reduce((s,g)=>s+g.valor,0);
+  const totalE=entradasMes.reduce((s,e)=>s+e.valor,0);
+  return(
+    <Card style={{padding:"20px 22px",display:"flex",flexDirection:"column",minHeight:0}}>
+      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:16}}>
+        <div style={{display:"flex",gap:3,background:C.border,borderRadius:10,padding:3}}>
+          {[{id:"gastos",label:"Gastos"},{id:"entradas",label:"Entradas"}].map(a=>(
+            <button key={a.id} onClick={()=>setAba(a.id)} style={{padding:"6px 18px",borderRadius:8,border:"none",cursor:"pointer",fontSize:13,fontFamily:"'DM Mono',monospace",transition:"all .2s",background:aba===a.id?C.border2:"transparent",color:aba===a.id?C.white:C.muted}}>{a.label}</button>
+          ))}
+        </div>
+        <span style={{fontSize:13,color:C.amber,fontFamily:"'DM Mono',monospace"}}>
+          {aba==="gastos"?`${gastosMes.length} itens · ${fBRL(totalG)}`:`${entradasMes.length} itens · ${fBRL(totalE)}`}
+        </span>
+      </div>
+      <div style={{display:"grid",gridTemplateColumns:"2fr 1fr 1fr 90px 24px",gap:8,padding:"0 0 10px",borderBottom:`1px solid ${C.border}`}}>
+        {["Descrição","Categoria","Data","Valor",""].map((h,i)=>(
+          <span key={i} style={{fontSize:10,color:C.muted2,fontFamily:"'DM Mono',monospace",textTransform:"uppercase",letterSpacing:"0.08em"}}>{h}</span>
+        ))}
+      </div>
+      <div style={{flex:1,overflowY:"auto",marginTop:4}}>
+        {carregando&&<p style={{color:C.muted,fontSize:14,textAlign:"center",padding:"24px 0"}}>Carregando...</p>}
+        {aba==="gastos"&&(
+          <>
+            {!carregando&&gastosMes.length===0&&<p style={{color:C.muted,fontSize:14,textAlign:"center",padding:"24px 0"}}>Nenhum gasto este mês</p>}
+            {[...gastosMes].sort((a,b)=>new Date(b.data)-new Date(a.data)).map(g=>{
+              const cat=CATS_GASTO.find(c=>c.nome===g.categoria)||CATS_GASTO[6];
+              return(
+                <div key={g.id} className="row-t" style={{display:"grid",gridTemplateColumns:"2fr 1fr 1fr 90px 24px",gap:8,padding:"12px 0",borderBottom:`1px solid ${C.border}18`,alignItems:"center"}}>
+                  <div style={{display:"flex",alignItems:"center",gap:9}}><span style={{fontSize:16}}>{cat.emoji}</span><span style={{fontSize:14,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{g.descricao}</span></div>
+                  <span style={{padding:"3px 9px",borderRadius:20,fontSize:11,background:C.border2,color:C.muted,fontFamily:"'DM Mono',monospace",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",display:"inline-block"}}>{g.categoria}</span>
+                  <span style={{fontSize:12,color:C.muted,fontFamily:"'DM Mono',monospace"}}>{new Date(g.data+"T12:00:00").toLocaleDateString("pt-BR")}</span>
+                  <span style={{fontSize:14,color:C.white,fontFamily:"'DM Mono',monospace",textAlign:"right"}}>{fBRL(g.valor)}</span>
+                  <button onClick={()=>onDelGasto(g.id)} className="del" style={{opacity:0,background:"transparent",border:"none",color:C.danger,fontSize:17,cursor:"pointer",transition:"opacity .2s"}}>×</button>
+                </div>
+              );
+            })}
+          </>
+        )}
+        {aba==="entradas"&&(
+          <>
+            {!carregando&&entradasMes.length===0&&<p style={{color:C.muted,fontSize:14,textAlign:"center",padding:"24px 0"}}>Nenhuma entrada este mês</p>}
+            {[...entradasMes].sort((a,b)=>new Date(b.data)-new Date(a.data)).map(e=>{
+              const cat=CATS_ENTRADA.find(c=>c.nome===e.categoria)||CATS_ENTRADA[4];
+              return(
+                <div key={e.id} className="row-t" style={{display:"grid",gridTemplateColumns:"2fr 1fr 1fr 90px 24px",gap:8,padding:"12px 0",borderBottom:`1px solid ${C.border}18`,alignItems:"center"}}>
+                  <div style={{display:"flex",alignItems:"center",gap:9}}><span style={{fontSize:16}}>{cat.emoji}</span><span style={{fontSize:14,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{e.descricao}</span></div>
+                  <span style={{padding:"3px 9px",borderRadius:20,fontSize:11,background:C.amberLo,color:C.amber,fontFamily:"'DM Mono',monospace"}}>{e.categoria}</span>
+                  <span style={{fontSize:12,color:C.muted,fontFamily:"'DM Mono',monospace"}}>{new Date(e.data+"T12:00:00").toLocaleDateString("pt-BR")}</span>
+                  <span style={{fontSize:14,color:C.amber,fontFamily:"'DM Mono',monospace",textAlign:"right"}}>{fBRL(e.valor)}</span>
+                  <button onClick={()=>onDelEntrada(e.id)} className="del" style={{opacity:0,background:"transparent",border:"none",color:C.danger,fontSize:17,cursor:"pointer",transition:"opacity .2s"}}>×</button>
+                </div>
+              );
+            })}
+          </>
+        )}
+      </div>
+    </Card>
+  );
+}
+
+// ── Modal mobile ──────────────────────────────────────────
+function Modal({tipo,onClose,onSave}){
+  const hoje=new Date().toISOString().split("T")[0];
+  const cats=tipo==="gasto"?CATS_GASTO:CATS_ENTRADA;
+  const [form,setForm]=useState({descricao:tipo==="gasto"?"":cats[0].nome,valor:"",categoria:cats[0].nome,data:hoje});
+  const salvar=()=>{
+    if(!form.valor||isNaN(parseFloat(form.valor)))return;
+    if(tipo==="gasto"&&!form.descricao)return;
+    onSave({...form,valor:parseFloat(form.valor)});
   };
-  return (
-    <div style={{ position: "fixed", inset: 0, background: "#000000dd", zIndex: 100, display: "flex", alignItems: "flex-end" }} onClick={onClose}>
-      <div style={{ background: "#111", border: "1px solid #222", borderRadius: "20px 20px 0 0", padding: 24, width: "100%", display: "flex", flexDirection: "column", gap: 14 }} onClick={e => e.stopPropagation()}>
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-          <p style={{ fontFamily: "'Playfair Display', serif", fontSize: 18, color: tipo === "entrada" ? AMBER : "#fff" }}>
-            {tipo === "entrada" ? "Nova entrada" : "Novo gasto"}
-          </p>
-          <button onClick={onClose} style={{ background: "#222", color: "#888", border: "none", borderRadius: 8, padding: "4px 10px", cursor: "pointer", fontSize: 16 }}>✕</button>
+  return(
+    <div style={{position:"fixed",inset:0,background:"#000000e0",zIndex:100,display:"flex",alignItems:"flex-end"}} onClick={onClose}>
+      <div style={{background:C.surface,border:`1px solid ${C.border2}`,borderRadius:"22px 22px 0 0",padding:24,width:"100%",display:"flex",flexDirection:"column",gap:14}} onClick={e=>e.stopPropagation()}>
+        {/* handle */}
+        <div style={{width:36,height:4,background:C.border2,borderRadius:99,margin:"-8px auto 0"}}/>
+        <p style={{fontFamily:"'Playfair Display',serif",fontSize:20,color:tipo==="gasto"?C.white:C.amber,marginTop:4}}>{tipo==="gasto"?"Novo gasto":"Nova entrada"}</p>
+        {tipo==="gasto"&&<input className="inp" placeholder="Descrição" value={form.descricao} onChange={e=>setForm({...form,descricao:e.target.value})} autoFocus/>}
+        <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10}}>
+          <input className="inp" placeholder="Valor (R$)" type="number" value={form.valor} onChange={e=>setForm({...form,valor:e.target.value})} autoFocus={tipo==="entrada"}/>
+          <input className="inp" type="date" value={form.data} onChange={e=>setForm({...form,data:e.target.value})}/>
         </div>
-        {tipo === "gasto" && <input className="inp" placeholder="Descrição" value={form.descricao} onChange={e => setForm({ ...form, descricao: e.target.value })} autoFocus />}
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
-          <input className="inp" placeholder="Valor (R$)" type="number" value={form.valor} onChange={e => setForm({ ...form, valor: e.target.value })} autoFocus={tipo === "entrada"} />
-          <input className="inp" type="date" value={form.data} onChange={e => setForm({ ...form, data: e.target.value })} />
-        </div>
-        <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-          {cats.map(c => (
-            <button key={c.nome} onClick={() => setForm({ ...form, categoria: c.nome, descricao: tipo === "entrada" ? c.nome : form.descricao })}
-              style={{ padding: "6px 12px", borderRadius: 20, border: `1px solid ${form.categoria === c.nome ? AMBER : "#333"}`, background: form.categoria === c.nome ? AMBER+"22" : "transparent", color: form.categoria === c.nome ? AMBER : "#666", fontSize: 12, cursor: "pointer", transition: "all .15s" }}>
+        <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
+          {cats.map(c=>(
+            <button key={c.nome} onClick={()=>setForm({...form,categoria:c.nome,...(tipo==="entrada"?{descricao:c.nome}:{})})}
+              style={{padding:"7px 14px",borderRadius:22,border:`1px solid ${form.categoria===c.nome?C.amber:C.border2}`,background:form.categoria===c.nome?C.amberLo:"transparent",color:form.categoria===c.nome?C.amber:C.muted,fontSize:13,cursor:"pointer",fontFamily:"'DM Mono',monospace",transition:"all .15s"}}>
               {c.emoji} {c.nome}
             </button>
           ))}
         </div>
-        <button onClick={salvar} style={{ background: tipo === "entrada" ? `linear-gradient(135deg, ${AMBER_DIM}, ${AMBER})` : "#fff", color: tipo === "entrada" ? "#000" : "#000", fontWeight: 700, padding: 14, borderRadius: 12, border: "none", fontSize: 15, cursor: "pointer" }}>
-          Salvar
+        <button onClick={salvar} style={{background:tipo==="gasto"?C.white:C.amber,color:C.bg,fontWeight:700,padding:"15px",borderRadius:12,border:"none",fontSize:16,cursor:"pointer",marginTop:2}}>
+          Salvar {tipo}
         </button>
       </div>
     </div>
   );
 }
 
-// ─── MOBILE ───────────────────────────────────────────────
-function MobileApp({ gastos, entradas, carregando, onAddGasto, onAddEntrada, onDelGasto, onDelEntrada }) {
-  const hoje = new Date();
-  const [mes, setMes] = useState(hoje.getMonth());
-  const [ano, setAno] = useState(hoje.getFullYear());
-  const [aba, setAba] = useState("gastos");
-  const [modal, setModal] = useState(null);
+// ══════════════════════════════════════════════════════════
+// MOBILE
+// ══════════════════════════════════════════════════════════
+function MobileApp({gastos,entradas,carregando,onAddGasto,onAddEntrada,onDelGasto,onDelEntrada}){
+  const hoje=new Date();
+  const [mes,setMes]=useState(hoje.getMonth());
+  const [ano,setAno]=useState(hoje.getFullYear());
+  const [modal,setModal]=useState(null);
+  const [aba,setAba]=useState("resumo");
 
-  const gastosMes = useMemo(() => gastos.filter(g => { const d = new Date(g.data+"T12:00:00"); return d.getMonth()===mes && d.getFullYear()===ano; }), [gastos, mes, ano]);
-  const entradasMes = useMemo(() => entradas.filter(e => { const d = new Date(e.data+"T12:00:00"); return d.getMonth()===mes && d.getFullYear()===ano; }), [entradas, mes, ano]);
+  const gastosMes  =useMemo(()=>gastos.filter(g=>{const d=new Date(g.data+"T12:00:00");return d.getMonth()===mes&&d.getFullYear()===ano;}),[gastos,mes,ano]);
+  const entradasMes=useMemo(()=>entradas.filter(e=>{const d=new Date(e.data+"T12:00:00");return d.getMonth()===mes&&d.getFullYear()===ano;}),[entradas,mes,ano]);
+  const totalG=gastosMes.reduce((s,g)=>s+g.valor,0);
+  const totalE=entradasMes.reduce((s,e)=>s+e.valor,0);
+  const saldo=totalE-totalG;
+  const pct=totalE>0?Math.min((totalG/totalE)*100,100):0;
+  const saude=getSaude(totalE>0?(totalG/totalE)*100:0,saldo);
+  const corB=pct>85?C.danger:pct>60?C.warn:C.amber;
+  const mudar=(d)=>{let m=mes+d,a=ano;if(m<0){m=11;a--;}if(m>11){m=0;a++;}setMes(m);setAno(a);};
 
-  const totalGastos = gastosMes.reduce((s, g) => s + g.valor, 0);
-  const totalEntradas = entradasMes.reduce((s, e) => s + e.valor, 0);
-  const saldo = totalEntradas - totalGastos;
-  const pct = totalEntradas > 0 ? Math.min((totalGastos / totalEntradas) * 100, 110) : 0;
-  const corBarra = pct > 95 ? "#ef4444" : pct > 80 ? "#f97316" : AMBER;
-
-  const mudarMes = (d) => {
-    let m = mes + d, a = ano;
-    if (m < 0) { m = 11; a--; } if (m > 11) { m = 0; a++; }
-    setMes(m); setAno(a);
-  };
-
-  return (
-    <div style={{ minHeight: "100vh", background: "#0a0a0a", color: "#e2e8f0", paddingBottom: 80, fontFamily: "'Georgia', serif" }}>
-      <div style={{ padding: "20px 16px 0", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-        <h1 style={{ fontFamily: "'Playfair Display', serif", fontSize: 22, fontWeight: 700, color: "#fff" }}>
-          Finanças <span style={{ color: AMBER }}>Pessoais</span>
-        </h1>
-        <div style={{ width: 8, height: 8, borderRadius: "50%", background: carregando ? "#f97316" : AMBER, boxShadow: `0 0 8px ${carregando ? "#f97316" : AMBER}` }} />
+  return(
+    <div style={{minHeight:"100vh",background:C.bg,color:C.text,paddingBottom:90,fontFamily:"'Georgia',serif"}}>
+      {/* Header */}
+      <div style={{padding:"22px 18px 0",display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+        <div>
+          <h1 style={{fontFamily:"'Playfair Display',serif",fontSize:24,fontWeight:700,lineHeight:1}}>Finanças <span style={{color:C.amber}}>Pessoais</span></h1>
+          <p style={{fontSize:12,color:C.muted,fontFamily:"'DM Mono',monospace",marginTop:3}}>{MESES[mes]} {ano}</p>
+        </div>
+        <div style={{display:"flex",alignItems:"center",gap:6}}>
+          <div style={{width:7,height:7,borderRadius:"50%",background:carregando?C.warn:C.amber,boxShadow:`0 0 8px ${carregando?C.warn:C.amber}`}}/>
+          <span style={{fontSize:11,color:C.muted,fontFamily:"'DM Mono',monospace"}}>{carregando?"sync...":"ao vivo"}</span>
+        </div>
       </div>
 
-      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "14px 16px 0" }}>
-        <button onClick={() => mudarMes(-1)} style={btnNav}>←</button>
-        <span style={{ fontFamily: "'Playfair Display', serif", fontSize: 17, fontWeight: 600, color: "#fff" }}>{MESES_SHORT[mes]} {ano}</span>
-        <button onClick={() => mudarMes(1)} style={btnNav}>→</button>
+      {/* Mês nav */}
+      <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"14px 18px 0"}}>
+        <button onClick={()=>mudar(-1)} style={{background:C.surface,border:`1px solid ${C.border}`,color:C.muted,borderRadius:10,padding:"8px 16px",cursor:"pointer",fontSize:17,lineHeight:1}}>←</button>
+        <span style={{fontFamily:"'Playfair Display',serif",fontSize:19,fontWeight:600}}>{MESES[mes]}</span>
+        <button onClick={()=>mudar(1)} style={{background:C.surface,border:`1px solid ${C.border}`,color:C.muted,borderRadius:10,padding:"8px 16px",cursor:"pointer",fontSize:17,lineHeight:1}}>→</button>
       </div>
 
-      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 8, padding: "12px 16px 0" }}>
+      {/* Cards topo */}
+      <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:10,padding:"14px 18px 0"}}>
         {[
-          { label: "Entradas", valor: totalEntradas, cor: AMBER },
-          { label: "Gastos", valor: totalGastos, cor: "#fff" },
-          { label: "Saldo", valor: saldo, cor: saldo >= 0 ? AMBER_BRIGHT : "#ef4444" },
-        ].map(item => (
-          <div key={item.label} style={card}>
-            <p style={{ fontSize: 10, color: "#555", fontFamily: "'DM Mono', monospace", marginBottom: 5 }}>{item.label}</p>
-            <p style={{ fontSize: 14, fontWeight: 700, color: item.cor, fontFamily: "'DM Mono', monospace" }}>{fBRL(item.valor)}</p>
+          {label:"Entradas",valor:totalE,cor:C.amber},
+          {label:"Gastos",valor:totalG,cor:C.white},
+          {label:"Saldo",valor:saldo,cor:saldo>=0?C.amber:C.danger},
+        ].map(item=>(
+          <div key={item.label} style={{background:C.surface,border:`1px solid ${C.border}`,borderRadius:14,padding:"13px 12px"}}>
+            <p style={{fontSize:11,color:C.muted,fontFamily:"'DM Mono',monospace",marginBottom:6,textTransform:"uppercase",letterSpacing:"0.08em"}}>{item.label}</p>
+            <p style={{fontSize:14,fontWeight:700,color:item.cor,fontFamily:"'DM Mono',monospace",lineHeight:1}}>{fBRL(item.valor)}</p>
           </div>
         ))}
       </div>
 
-      <div style={{ margin: "10px 16px 0", ...card, padding: "10px 14px" }}>
-        <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 7 }}>
-          <span style={{ fontSize: 11, color: "#555", fontFamily: "'DM Mono', monospace" }}>comprometido</span>
-          <span style={{ fontSize: 11, color: corBarra, fontFamily: "'DM Mono', monospace" }}>{pct.toFixed(1)}%</span>
+      {/* Barra */}
+      <div style={{margin:"12px 18px 0",background:C.surface,border:`1px solid ${C.border}`,borderRadius:14,padding:"14px 16px"}}>
+        <div style={{display:"flex",justifyContent:"space-between",marginBottom:8}}>
+          <div style={{display:"flex",alignItems:"center",gap:8}}>
+            <div style={{width:8,height:8,borderRadius:"50%",background:saude.cor,boxShadow:`0 0 6px ${saude.cor}`}}/>
+            <span style={{fontSize:13,color:saude.cor,fontFamily:"'DM Mono',monospace",fontWeight:600}}>{saude.label}</span>
+          </div>
+          <span style={{fontSize:13,color:corB,fontFamily:"'DM Mono',monospace"}}>{pct.toFixed(1)}%</span>
         </div>
-        <div style={{ background: "#1a1a1a", borderRadius: 99, height: 5 }}>
-          <div style={{ width: `${Math.min(pct,100)}%`, background: corBarra, height: "100%", borderRadius: 99, transition: "width 0.6s" }} />
+        <div style={{background:C.border,borderRadius:99,height:7}}>
+          <div style={{width:`${pct}%`,background:`linear-gradient(90deg,${C.amberMid},${corB})`,height:"100%",borderRadius:99,transition:"width .6s"}}/>
         </div>
+        <p style={{fontSize:11,color:C.muted,fontFamily:"'DM Mono',monospace",marginTop:7}}>{saude.msg}</p>
       </div>
 
-      <div style={{ display: "flex", margin: "12px 16px 0", background: "#111", border: "1px solid #222", borderRadius: 12, padding: 4, gap: 4 }}>
-        {[{ id: "gastos", label: "Gastos" }, { id: "entradas", label: "Entradas" }, { id: "cats", label: "Categorias" }].map(a => (
-          <button key={a.id} onClick={() => setAba(a.id)} style={{ flex: 1, padding: "8px 4px", borderRadius: 8, border: "none", cursor: "pointer", fontSize: 12, fontFamily: "'DM Mono', monospace", transition: "all .2s", background: aba === a.id ? "#222" : "transparent", color: aba === a.id ? "#fff" : "#555" }}>{a.label}</button>
+      {/* Abas */}
+      <div style={{display:"flex",margin:"14px 18px 0",background:C.surface,border:`1px solid ${C.border}`,borderRadius:12,padding:4,gap:3}}>
+        {[{id:"resumo",label:"Resumo"},{id:"gastos",label:"Gastos"},{id:"entradas",label:"Entradas"},{id:"cats",label:"Categ."}].map(a=>(
+          <button key={a.id} onClick={()=>setAba(a.id)} style={{flex:1,padding:"9px 4px",borderRadius:9,border:"none",cursor:"pointer",fontSize:12,fontFamily:"'DM Mono',monospace",transition:"all .2s",background:aba===a.id?C.border2:"transparent",color:aba===a.id?C.white:C.muted}}>{a.label}</button>
         ))}
       </div>
 
-      <div style={{ margin: "10px 16px 0", ...card }}>
-        {aba === "cats" && <BarChart gastos={gastosMes} />}
-        {aba !== "cats" && (() => {
-          const lista = aba === "gastos" ? gastosMes : entradasMes;
-          const cats = aba === "gastos" ? CAT_GASTOS : CAT_ENTRADAS;
-          const onDel = aba === "gastos" ? onDelGasto : onDelEntrada;
-          return (
-            <>
-              {carregando && <p style={emptyStyle}>Carregando...</p>}
-              {!carregando && lista.length === 0 && <p style={emptyStyle}>Nenhum registro este mês</p>}
-              {[...lista].sort((a,b) => new Date(b.data)-new Date(a.data)).map(g => {
-                const cat = cats.find(c => c.nome === g.categoria) || cats[cats.length-1];
-                return (
-                  <div key={g.id} style={{ display: "flex", alignItems: "center", gap: 10, padding: "10px 0", borderBottom: "1px solid #1a1a1a" }}>
-                    <span style={{ fontSize: 17 }}>{cat.emoji}</span>
-                    <div style={{ flex: 1 }}>
-                      <p style={{ fontSize: 13, fontWeight: 500, color: "#ddd" }}>{g.descricao}</p>
-                      <p style={{ fontSize: 10, color: "#555", fontFamily: "'DM Mono', monospace" }}>{new Date(g.data+"T12:00:00").toLocaleDateString("pt-BR")} · {g.categoria}</p>
-                    </div>
-                    <span style={{ fontSize: 13, color: aba === "entradas" ? AMBER : "#fff", fontFamily: "'DM Mono', monospace" }}>{fBRL(g.valor)}</span>
-                    <button onClick={() => onDel(g.id)} style={{ background: "transparent", border: "none", color: "#444", fontSize: 18, cursor: "pointer", padding: "0 4px" }}>×</button>
+      {/* Conteúdo abas */}
+      <div style={{margin:"12px 18px 0",background:C.surface,border:`1px solid ${C.border}`,borderRadius:14,padding:16}}>
+        {aba==="cats"&&<BarChart gastos={gastosMes}/>}
+        {aba==="resumo"&&(
+          <div style={{display:"flex",flexDirection:"column",gap:14}}>
+            <div>
+              <p style={{fontSize:12,color:C.muted,fontFamily:"'DM Mono',monospace",textTransform:"uppercase",letterSpacing:"0.1em",marginBottom:10}}>regra 50 · 30 · 20</p>
+              <div style={{display:"flex",gap:8}}>
+                {[{label:"Essencial",pct:50},{label:"Lazer",pct:30},{label:"Reserva",pct:20}].map(r=>(
+                  <div key={r.label} style={{flex:1,background:C.border,borderRadius:10,padding:"10px 0",textAlign:"center"}}>
+                    <p style={{fontSize:10,color:C.muted,fontFamily:"'DM Mono',monospace",marginBottom:4}}>{r.label}</p>
+                    <p style={{fontSize:16,color:C.amber,fontFamily:"'DM Mono',monospace",fontWeight:700}}>{r.pct}%</p>
+                    <p style={{fontSize:10,color:C.muted2,fontFamily:"'DM Mono',monospace",marginTop:3}}>{fBRL(totalE*r.pct/100)}</p>
                   </div>
-                );
-              })}
-            </>
-          );
-        })()}
+                ))}
+              </div>
+            </div>
+            <AnualChart gastos={gastos} entradas={entradas}/>
+          </div>
+        )}
+        {aba==="gastos"&&(
+          <>
+            {!carregando&&gastosMes.length===0&&<p style={{color:C.muted,fontSize:14,textAlign:"center",padding:"18px 0"}}>Nenhum gasto este mês</p>}
+            {[...gastosMes].sort((a,b)=>new Date(b.data)-new Date(a.data)).map(g=>{
+              const cat=CATS_GASTO.find(c=>c.nome===g.categoria)||CATS_GASTO[6];
+              return(
+                <div key={g.id} style={{display:"flex",alignItems:"center",gap:12,padding:"12px 0",borderBottom:`1px solid ${C.border}`}}>
+                  <div style={{width:36,height:36,borderRadius:10,background:C.border,display:"flex",alignItems:"center",justifyContent:"center",fontSize:18,flexShrink:0}}>{cat.emoji}</div>
+                  <div style={{flex:1,minWidth:0}}>
+                    <p style={{fontSize:14,fontWeight:500,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{g.descricao}</p>
+                    <p style={{fontSize:11,color:C.muted,fontFamily:"'DM Mono',monospace",marginTop:2}}>{new Date(g.data+"T12:00:00").toLocaleDateString("pt-BR")} · {g.categoria}</p>
+                  </div>
+                  <div style={{textAlign:"right",flexShrink:0}}>
+                    <p style={{fontSize:14,color:C.white,fontFamily:"'DM Mono',monospace"}}>{fBRL(g.valor)}</p>
+                  </div>
+                  <button onClick={()=>onDelGasto(g.id)} style={{background:"transparent",border:"none",color:C.muted2,fontSize:20,cursor:"pointer",flexShrink:0,lineHeight:1}}>×</button>
+                </div>
+              );
+            })}
+          </>
+        )}
+        {aba==="entradas"&&(
+          <>
+            {!carregando&&entradasMes.length===0&&<p style={{color:C.muted,fontSize:14,textAlign:"center",padding:"18px 0"}}>Nenhuma entrada este mês</p>}
+            {[...entradasMes].sort((a,b)=>new Date(b.data)-new Date(a.data)).map(e=>{
+              const cat=CATS_ENTRADA.find(c=>c.nome===e.categoria)||CATS_ENTRADA[4];
+              return(
+                <div key={e.id} style={{display:"flex",alignItems:"center",gap:12,padding:"12px 0",borderBottom:`1px solid ${C.border}`}}>
+                  <div style={{width:36,height:36,borderRadius:10,background:C.amberLo,border:`1px solid ${C.amber}44`,display:"flex",alignItems:"center",justifyContent:"center",fontSize:18,flexShrink:0}}>{cat.emoji}</div>
+                  <div style={{flex:1,minWidth:0}}>
+                    <p style={{fontSize:14,fontWeight:500,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{e.descricao}</p>
+                    <p style={{fontSize:11,color:C.muted,fontFamily:"'DM Mono',monospace",marginTop:2}}>{new Date(e.data+"T12:00:00").toLocaleDateString("pt-BR")} · {e.categoria}</p>
+                  </div>
+                  <p style={{fontSize:14,color:C.amber,fontFamily:"'DM Mono',monospace",flexShrink:0}}>{fBRL(e.valor)}</p>
+                  <button onClick={()=>onDelEntrada(e.id)} style={{background:"transparent",border:"none",color:C.muted2,fontSize:20,cursor:"pointer",flexShrink:0,lineHeight:1}}>×</button>
+                </div>
+              );
+            })}
+          </>
+        )}
       </div>
 
       {/* FABs */}
-      <div style={{ position: "fixed", bottom: 88, right: 16, display: "flex", flexDirection: "column", gap: 10 }}>
-        <button onClick={() => setModal("entrada")} style={{ width: 48, height: 48, borderRadius: "50%", background: `linear-gradient(135deg, ${AMBER_DIM}, ${AMBER})`, border: "none", color: "#000", fontSize: 20, cursor: "pointer", boxShadow: `0 4px 20px ${AMBER}55`, display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 700 }}>+</button>
-        <button onClick={() => setModal("gasto")} style={{ width: 48, height: 48, borderRadius: "50%", background: "#fff", border: "none", color: "#000", fontSize: 20, cursor: "pointer", boxShadow: "0 4px 20px #ffffff33", display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 700 }}>−</button>
-      </div>
-      <div style={{ position: "fixed", bottom: 64, right: 16, display: "flex", flexDirection: "column", alignItems: "center", gap: 10 }}>
-        <span style={{ fontSize: 9, color: AMBER, fontFamily: "'DM Mono', monospace" }}>entrada</span>
-        <span style={{ fontSize: 9, color: "#fff", fontFamily: "'DM Mono', monospace", marginTop: 14 }}>gasto</span>
+      <div style={{position:"fixed",bottom:96,right:18,display:"flex",flexDirection:"column",alignItems:"center",gap:8,zIndex:50}}>
+        <span style={{fontSize:10,color:C.muted,fontFamily:"'DM Mono',monospace"}}>entrada</span>
+        <button onClick={()=>setModal("entrada")} style={{width:52,height:52,borderRadius:"50%",background:C.amber,border:"none",color:C.bg,fontSize:24,cursor:"pointer",boxShadow:`0 4px 24px ${C.amber}55`,fontWeight:700,display:"flex",alignItems:"center",justifyContent:"center",lineHeight:1}}>+</button>
+        <button onClick={()=>setModal("gasto")} style={{width:52,height:52,borderRadius:"50%",background:C.white,border:"none",color:C.bg,fontSize:24,cursor:"pointer",boxShadow:"0 4px 24px #ffffff22",fontWeight:700,display:"flex",alignItems:"center",justifyContent:"center",lineHeight:1}}>−</button>
+        <span style={{fontSize:10,color:C.muted,fontFamily:"'DM Mono',monospace"}}>gasto</span>
       </div>
 
-      <div style={{ position: "fixed", bottom: 0, left: 0, right: 0, background: "#111", borderTop: "1px solid #222", display: "flex", padding: "8px 0 16px" }}>
-        {[{ emoji: "📊", label: "Resumo" }, { emoji: "📋", label: "Registros" }, { emoji: "📈", label: "Anual" }].map((item, i) => (
-          <div key={i} style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", gap: 2 }}>
-            <span style={{ fontSize: 18 }}>{item.emoji}</span>
-            <span style={{ fontSize: 10, color: "#555", fontFamily: "'DM Mono', monospace" }}>{item.label}</span>
+      {/* Bottom nav */}
+      <div style={{position:"fixed",bottom:0,left:0,right:0,background:C.surface,borderTop:`1px solid ${C.border}`,display:"flex",padding:"10px 0 18px",zIndex:40}}>
+        {[{emoji:"📊",label:"Resumo"},{emoji:"💸",label:"Gastos"},{emoji:"💰",label:"Entradas"},{emoji:"📈",label:"Gráficos"}].map((item,i)=>(
+          <div key={i} style={{flex:1,display:"flex",flexDirection:"column",alignItems:"center",gap:3}}>
+            <span style={{fontSize:20}}>{item.emoji}</span>
+            <span style={{fontSize:10,color:C.muted,fontFamily:"'DM Mono',monospace"}}>{item.label}</span>
           </div>
         ))}
       </div>
 
-      {modal && <ModalMobile tipo={modal} onClose={() => setModal(null)} onSave={async (dados) => { modal === "gasto" ? await onAddGasto(dados) : await onAddEntrada(dados); setModal(null); }} />}
+      {modal&&<Modal tipo={modal} onClose={()=>setModal(null)} onSave={async(d)=>{if(modal==="gasto")await onAddGasto(d);else await onAddEntrada(d);setModal(null);}}/>}
     </div>
   );
 }
 
-// ─── DESKTOP ──────────────────────────────────────────────
-function DesktopApp({ gastos, entradas, carregando, onAddGasto, onAddEntrada, onDelGasto, onDelEntrada }) {
-  const hoje = new Date();
-  const [mes, setMes] = useState(hoje.getMonth());
-  const [ano, setAno] = useState(hoje.getFullYear());
-  const [painel, setPainel] = useState("gasto"); // "gasto" | "entrada"
-  const [formG, setFormG] = useState({ descricao: "", valor: "", categoria: "Alimentação", data: hoje.toISOString().split("T")[0] });
-  const [formE, setFormE] = useState({ descricao: "Salário", valor: "", categoria: "Salário", data: hoje.toISOString().split("T")[0] });
+// ══════════════════════════════════════════════════════════
+// DESKTOP
+// ══════════════════════════════════════════════════════════
+const lbl={fontSize:12,color:"#505050",fontFamily:"'DM Mono',monospace",textTransform:"uppercase",letterSpacing:"0.08em",display:"block",marginBottom:7};
 
-  const gastosMes = useMemo(() => gastos.filter(g => { const d = new Date(g.data+"T12:00:00"); return d.getMonth()===mes && d.getFullYear()===ano; }), [gastos, mes, ano]);
-  const entradasMes = useMemo(() => entradas.filter(e => { const d = new Date(e.data+"T12:00:00"); return d.getMonth()===mes && d.getFullYear()===ano; }), [entradas, mes, ano]);
+function DesktopApp({gastos,entradas,carregando,onAddGasto,onAddEntrada,onDelGasto,onDelEntrada}){
+  const hoje=new Date();
+  const [mes,setMes]=useState(hoje.getMonth());
+  const [ano,setAno]=useState(hoje.getFullYear());
+  const [abaForm,setAbaForm]=useState("gasto");
+  const [showForm,setShowForm]=useState(false);
+  const [formG,setFormG]=useState({descricao:"",valor:"",categoria:"Alimentação",data:hoje.toISOString().split("T")[0]});
+  const [formE,setFormE]=useState({descricao:"Salário",valor:"",categoria:"Salário",data:hoje.toISOString().split("T")[0]});
 
-  const totalGastos = gastosMes.reduce((s, g) => s + g.valor, 0);
-  const totalEntradas = entradasMes.reduce((s, e) => s + e.valor, 0);
-  const saldo = totalEntradas - totalGastos;
-  const pct = totalEntradas > 0 ? Math.min((totalGastos / totalEntradas) * 100, 110) : 0;
-  const saúde = saude(pct);
-  const corBarra = pct > 95 ? "#ef4444" : pct > 80 ? "#f97316" : AMBER;
+  const gastosMes  =useMemo(()=>gastos.filter(g=>{const d=new Date(g.data+"T12:00:00");return d.getMonth()===mes&&d.getFullYear()===ano;}),[gastos,mes,ano]);
+  const entradasMes=useMemo(()=>entradas.filter(e=>{const d=new Date(e.data+"T12:00:00");return d.getMonth()===mes&&d.getFullYear()===ano;}),[entradas,mes,ano]);
+  const totalG=gastosMes.reduce((s,g)=>s+g.valor,0);
+  const totalE=entradasMes.reduce((s,e)=>s+e.valor,0);
+  const saldo=totalE-totalG;
+  const pctReal=totalE>0?(totalG/totalE)*100:0;
+  const saude=getSaude(pctReal,saldo);
+  const corB=pctReal>85?C.danger:pctReal>60?C.warn:C.amber;
+  const mudar=(d)=>{let m=mes+d,a=ano;if(m<0){m=11;a--;}if(m>11){m=0;a++;}setMes(m);setAno(a);};
+  const diasMes=gastosMes.length>0?Math.max(...gastosMes.map(g=>new Date(g.data+"T12:00:00").getDate())):1;
+  const mediaDia=diasMes>0?totalG/diasMes:0;
 
-  const mudarMes = (d) => {
-    let m = mes + d, a = ano;
-    if (m < 0) { m = 11; a--; } if (m > 11) { m = 0; a++; }
-    setMes(m); setAno(a);
+  const salvarGasto=async()=>{
+    if(!formG.descricao||!formG.valor||isNaN(parseFloat(formG.valor)))return;
+    await onAddGasto({...formG,valor:parseFloat(formG.valor)});
+    setFormG({descricao:"",valor:"",categoria:"Alimentação",data:hoje.toISOString().split("T")[0]});
+    setShowForm(false);
+  };
+  const salvarEntrada=async()=>{
+    if(!formE.valor||isNaN(parseFloat(formE.valor)))return;
+    await onAddEntrada({...formE,valor:parseFloat(formE.valor)});
+    setFormE({descricao:"Salário",valor:"",categoria:"Salário",data:hoje.toISOString().split("T")[0]});
+    setShowForm(false);
   };
 
-  const salvarGasto = async () => {
-    if (!formG.descricao || !formG.valor || isNaN(parseFloat(formG.valor))) return;
-    await onAddGasto({ ...formG, valor: parseFloat(formG.valor) });
-    setFormG({ descricao: "", valor: "", categoria: "Alimentação", data: hoje.toISOString().split("T")[0] });
-  };
+  return(
+    <div style={{minHeight:"100vh",background:C.bg,color:C.text,fontFamily:"'Georgia',serif",display:"flex",flexDirection:"column"}}>
 
-  const salvarEntrada = async () => {
-    if (!formE.valor || isNaN(parseFloat(formE.valor))) return;
-    await onAddEntrada({ ...formE, descricao: formE.descricao || formE.categoria, valor: parseFloat(formE.valor) });
-    setFormE({ descricao: formE.categoria, valor: "", categoria: formE.categoria, data: hoje.toISOString().split("T")[0] });
-  };
-
-  return (
-    <div style={{ minHeight: "100vh", background: "#080808", color: "#e2e8f0", fontFamily: "'Georgia', serif", display: "flex", flexDirection: "column" }}>
-
-      {/* TOPBAR */}
-      <div style={{ borderBottom: "1px solid #1a1a1a", padding: "18px 36px", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-        <div style={{ display: "flex", alignItems: "center", gap: 20 }}>
-          <h1 style={{ fontFamily: "'Playfair Display', serif", fontSize: 26, fontWeight: 700, color: "#fff", letterSpacing: "-0.5px" }}>
-            Finanças <span style={{ color: AMBER }}>Pessoais</span>
+      {/* ── Topbar ── */}
+      <div style={{borderBottom:`1px solid ${C.border}`,padding:"16px 36px",display:"flex",justifyContent:"space-between",alignItems:"center",background:C.surface}}>
+        <div style={{display:"flex",alignItems:"center",gap:20}}>
+          <h1 style={{fontFamily:"'Playfair Display',serif",fontSize:26,fontWeight:700,letterSpacing:"-0.5px",lineHeight:1}}>
+            Finanças <span style={{color:C.amber}}>Pessoais</span>
           </h1>
-          <div style={{ display: "flex", alignItems: "center", gap: 7 }}>
-            <div style={{ width: 7, height: 7, borderRadius: "50%", background: carregando ? "#f97316" : AMBER, boxShadow: `0 0 8px ${carregando ? "#f97316" : AMBER}` }} />
-            <span style={{ fontSize: 12, color: "#444", fontFamily: "'DM Mono', monospace" }}>{carregando ? "sincronizando..." : "ao vivo"}</span>
+          <div style={{width:1,height:22,background:C.border}}/>
+          <div style={{display:"flex",alignItems:"center",gap:7}}>
+            <div style={{width:7,height:7,borderRadius:"50%",background:carregando?C.warn:C.amber,boxShadow:`0 0 8px ${carregando?C.warn:C.amber}`}}/>
+            <span style={{fontSize:12,color:C.muted,fontFamily:"'DM Mono',monospace"}}>{carregando?"sincronizando...":"ao vivo"}</span>
           </div>
         </div>
-        <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-          <button onClick={() => mudarMes(-1)} style={btnNav}>←</button>
-          <span style={{ fontFamily: "'Playfair Display', serif", fontSize: 20, minWidth: 200, textAlign: "center", color: "#fff" }}>{MESES[mes]} {ano}</span>
-          <button onClick={() => mudarMes(1)} style={btnNav}>→</button>
-        </div>
-        <div style={{ display: "flex", gap: 8 }}>
-          <button onClick={() => setPainel(painel === "entrada" ? null : "entrada")} style={{ background: painel === "entrada" ? `linear-gradient(135deg, ${AMBER_DIM}, ${AMBER})` : "#111", color: painel === "entrada" ? "#000" : AMBER, fontWeight: 700, padding: "9px 18px", borderRadius: 10, border: `1px solid ${painel === "entrada" ? "transparent" : "#333"}`, fontSize: 13, cursor: "pointer", transition: "all .2s" }}>
-            + Entrada
-          </button>
-          <button onClick={() => setPainel(painel === "gasto" ? null : "gasto")} style={{ background: painel === "gasto" ? "#fff" : "#111", color: "#000", fontWeight: 700, padding: "9px 18px", borderRadius: 10, border: `1px solid ${painel === "gasto" ? "transparent" : "#333"}`, fontSize: 13, cursor: "pointer", transition: "all .2s" }}>
-            − Gasto
+        <div style={{display:"flex",alignItems:"center",gap:12}}>
+          <button onClick={()=>mudar(-1)} style={{background:C.bg,border:`1px solid ${C.border}`,color:C.muted,borderRadius:9,padding:"7px 16px",cursor:"pointer",fontSize:16,lineHeight:1}}>←</button>
+          <span style={{fontFamily:"'Playfair Display',serif",fontSize:20,minWidth:200,textAlign:"center"}}>{MESES[mes]} {ano}</span>
+          <button onClick={()=>mudar(1)} style={{background:C.bg,border:`1px solid ${C.border}`,color:C.muted,borderRadius:9,padding:"7px 16px",cursor:"pointer",fontSize:16,lineHeight:1}}>→</button>
+          <button onClick={()=>setShowForm(!showForm)} style={{background:showForm?C.border2:C.white,color:C.bg,fontWeight:700,padding:"9px 22px",borderRadius:10,border:"none",fontSize:14,cursor:"pointer",transition:"all .2s",letterSpacing:"0.02em"}}>
+            {showForm?"✕ Fechar":"+ Lançamento"}
           </button>
         </div>
       </div>
 
-      {/* FORM PANEL */}
-      {painel === "gasto" && (
-        <div style={{ background: "#0e0e0e", borderBottom: "1px solid #1a1a1a", padding: "16px 36px", display: "flex", gap: 12, alignItems: "flex-end", flexWrap: "wrap" }}>
-          <div style={{ flex: 2, minWidth: 160 }}>
-            <label style={lbl}>descrição</label>
-            <input className="inp" placeholder="Ex: Supermercado" value={formG.descricao} onChange={e => setFormG({...formG, descricao: e.target.value})} onKeyDown={e => e.key === "Enter" && salvarGasto()} autoFocus />
-          </div>
-          <div style={{ flex: 1, minWidth: 100 }}>
-            <label style={lbl}>valor</label>
-            <input className="inp" placeholder="0,00" type="number" value={formG.valor} onChange={e => setFormG({...formG, valor: e.target.value})} onKeyDown={e => e.key === "Enter" && salvarGasto()} />
-          </div>
-          <div style={{ flex: 1, minWidth: 120 }}>
-            <label style={lbl}>data</label>
-            <input className="inp" type="date" value={formG.data} onChange={e => setFormG({...formG, data: e.target.value})} />
-          </div>
-          <div style={{ flex: 1, minWidth: 140 }}>
-            <label style={lbl}>categoria</label>
-            <select className="inp" value={formG.categoria} onChange={e => setFormG({...formG, categoria: e.target.value})}>
-              {CAT_GASTOS.map(c => <option key={c.nome} value={c.nome}>{c.emoji} {c.nome}</option>)}
-            </select>
-          </div>
-          <button onClick={salvarGasto} style={{ background: "#fff", color: "#000", fontWeight: 700, padding: "10px 22px", borderRadius: 10, border: "none", cursor: "pointer", fontSize: 14, whiteSpace: "nowrap" }}>Salvar ↵</button>
-        </div>
-      )}
-      {painel === "entrada" && (
-        <div style={{ background: "#0e0e0e", borderBottom: `1px solid ${AMBER}33`, padding: "16px 36px", display: "flex", gap: 12, alignItems: "flex-end", flexWrap: "wrap" }}>
-          <div style={{ flex: 2, minWidth: 160 }}>
-            <label style={lbl}>descrição</label>
-            <input className="inp" placeholder="Ex: Salário de Março" value={formE.descricao} onChange={e => setFormE({...formE, descricao: e.target.value})} onKeyDown={e => e.key === "Enter" && salvarEntrada()} autoFocus />
-          </div>
-          <div style={{ flex: 1, minWidth: 100 }}>
-            <label style={lbl}>valor</label>
-            <input className="inp" placeholder="0,00" type="number" value={formE.valor} onChange={e => setFormE({...formE, valor: e.target.value})} onKeyDown={e => e.key === "Enter" && salvarEntrada()} />
-          </div>
-          <div style={{ flex: 1, minWidth: 120 }}>
-            <label style={lbl}>data</label>
-            <input className="inp" type="date" value={formE.data} onChange={e => setFormE({...formE, data: e.target.value})} />
-          </div>
-          <div style={{ flex: 1, minWidth: 140 }}>
-            <label style={lbl}>categoria</label>
-            <select className="inp" value={formE.categoria} onChange={e => setFormE({...formE, categoria: e.target.value, descricao: e.target.value})}>
-              {CAT_ENTRADAS.map(c => <option key={c.nome} value={c.nome}>{c.emoji} {c.nome}</option>)}
-            </select>
-          </div>
-          <button onClick={salvarEntrada} style={{ background: `linear-gradient(135deg, ${AMBER_DIM}, ${AMBER})`, color: "#000", fontWeight: 700, padding: "10px 22px", borderRadius: 10, border: "none", cursor: "pointer", fontSize: 14, whiteSpace: "nowrap" }}>Salvar ↵</button>
-        </div>
-      )}
+      <div style={{flex:1,padding:"24px 36px",display:"flex",flexDirection:"column",gap:20,overflowY:"auto"}}>
 
-      <div style={{ flex: 1, padding: "24px 36px", display: "flex", flexDirection: "column", gap: 20 }}>
-
-        {/* ALERTA DE SAÚDE */}
-        <div style={{ background: saúde.bg, border: `1px solid ${saúde.cor}44`, borderRadius: 14, padding: "16px 24px", display: "flex", alignItems: "center", gap: 16 }}>
-          <span style={{ fontSize: 28, color: saúde.cor, lineHeight: 1 }}>{saúde.icon}</span>
-          <div style={{ flex: 1 }}>
-            <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 4 }}>
-              <span style={{ fontFamily: "'Playfair Display', serif", fontSize: 18, color: saúde.cor, fontWeight: 700 }}>Saúde Financeira: {saúde.label}</span>
-              <span style={{ background: saúde.cor + "22", color: saúde.cor, fontSize: 11, padding: "2px 10px", borderRadius: 20, fontFamily: "'DM Mono', monospace" }}>{pct.toFixed(1)}% comprometido</span>
+        {/* ── Formulário ── */}
+        {showForm&&(
+          <Card amber style={{padding:22}}>
+            <div style={{display:"flex",gap:3,marginBottom:18,width:"fit-content",background:C.border,borderRadius:10,padding:3}}>
+              {[{id:"gasto",label:"− Gasto"},{id:"entrada",label:"+ Entrada"}].map(t=>(
+                <button key={t.id} onClick={()=>setAbaForm(t.id)} style={{padding:"7px 22px",borderRadius:8,border:"none",cursor:"pointer",fontSize:14,fontFamily:"'DM Mono',monospace",fontWeight:600,transition:"all .2s",background:abaForm===t.id?(t.id==="entrada"?C.amber:C.white):"transparent",color:abaForm===t.id?C.bg:C.muted}}>{t.label}</button>
+              ))}
             </div>
-            <p style={{ fontSize: 14, color: "#888" }}>{saúde.msg}</p>
+            {abaForm==="gasto"?(
+              <div style={{display:"flex",gap:12,alignItems:"flex-end",flexWrap:"wrap"}}>
+                <div style={{flex:2,minWidth:160}}><label style={lbl}>descrição</label><input className="inp" placeholder="Ex: Supermercado" value={formG.descricao} onChange={e=>setFormG({...formG,descricao:e.target.value})} onKeyDown={e=>e.key==="Enter"&&salvarGasto()} autoFocus/></div>
+                <div style={{flex:1,minWidth:100}}><label style={lbl}>valor</label><input className="inp" placeholder="0,00" type="number" value={formG.valor} onChange={e=>setFormG({...formG,valor:e.target.value})} onKeyDown={e=>e.key==="Enter"&&salvarGasto()}/></div>
+                <div style={{flex:1,minWidth:120}}><label style={lbl}>data</label><input className="inp" type="date" value={formG.data} onChange={e=>setFormG({...formG,data:e.target.value})}/></div>
+                <div style={{flex:1,minWidth:140}}><label style={lbl}>categoria</label><select className="inp" value={formG.categoria} onChange={e=>setFormG({...formG,categoria:e.target.value})}>{CATS_GASTO.map(c=><option key={c.nome} value={c.nome}>{c.emoji} {c.nome}</option>)}</select></div>
+                <button onClick={salvarGasto} style={{background:C.white,color:C.bg,fontWeight:700,padding:"11px 24px",borderRadius:10,border:"none",cursor:"pointer",fontSize:14,whiteSpace:"nowrap"}}>Salvar ↵</button>
+              </div>
+            ):(
+              <div style={{display:"flex",gap:12,alignItems:"flex-end",flexWrap:"wrap"}}>
+                <div style={{flex:2,minWidth:160}}><label style={lbl}>descrição</label><input className="inp" placeholder="Ex: Salário março" value={formE.descricao} onChange={e=>setFormE({...formE,descricao:e.target.value})} onKeyDown={e=>e.key==="Enter"&&salvarEntrada()} autoFocus/></div>
+                <div style={{flex:1,minWidth:100}}><label style={lbl}>valor</label><input className="inp" placeholder="0,00" type="number" value={formE.valor} onChange={e=>setFormE({...formE,valor:e.target.value})} onKeyDown={e=>e.key==="Enter"&&salvarEntrada()}/></div>
+                <div style={{flex:1,minWidth:120}}><label style={lbl}>data</label><input className="inp" type="date" value={formE.data} onChange={e=>setFormE({...formE,data:e.target.value})}/></div>
+                <div style={{flex:1,minWidth:140}}><label style={lbl}>categoria</label><select className="inp" value={formE.categoria} onChange={e=>setFormE({...formE,categoria:e.target.value,descricao:e.target.value})}>{CATS_ENTRADA.map(c=><option key={c.nome} value={c.nome}>{c.emoji} {c.nome}</option>)}</select></div>
+                <button onClick={salvarEntrada} style={{background:C.amber,color:C.bg,fontWeight:700,padding:"11px 24px",borderRadius:10,border:"none",cursor:"pointer",fontSize:14,whiteSpace:"nowrap"}}>Salvar ↵</button>
+              </div>
+            )}
+          </Card>
+        )}
+
+        {/* ── Banner saúde ── */}
+        <div style={{display:"flex",alignItems:"center",gap:16,padding:"16px 22px",background:saude.cor+"10",border:`1px solid ${saude.cor}33`,borderRadius:14}}>
+          <div style={{width:46,height:46,borderRadius:"50%",background:saude.cor+"20",border:`2px solid ${saude.cor}`,display:"flex",alignItems:"center",justifyContent:"center",fontSize:20,flexShrink:0}}>{saude.icon}</div>
+          <div style={{flex:1}}>
+            <div style={{display:"flex",alignItems:"center",gap:12,marginBottom:4}}>
+              <span style={{fontFamily:"'Playfair Display',serif",fontSize:18,fontWeight:700,color:saude.cor}}>Saúde Financeira: {saude.label}</span>
+              <span style={{fontSize:12,color:C.muted,fontFamily:"'DM Mono',monospace",background:C.border,padding:"2px 10px",borderRadius:20}}>{pctReal.toFixed(1)}% comprometido</span>
+            </div>
+            <p style={{fontSize:13,color:C.muted,fontFamily:"'DM Mono',monospace"}}>{saude.msg}</p>
           </div>
-          <div style={{ textAlign: "right" }}>
-            <p style={{ fontSize: 11, color: "#444", fontFamily: "'DM Mono', monospace", marginBottom: 4 }}>saldo do mês</p>
-            <p style={{ fontSize: 22, fontWeight: 700, color: saldo >= 0 ? AMBER : "#ef4444", fontFamily: "'DM Mono', monospace" }}>{fBRL(saldo)}</p>
+          <div style={{textAlign:"right",flexShrink:0}}>
+            <p style={{fontSize:12,color:C.muted,fontFamily:"'DM Mono',monospace",marginBottom:3}}>saldo do mês</p>
+            <p style={{fontSize:22,fontWeight:700,color:saldo>=0?C.amber:C.danger,fontFamily:"'DM Mono',monospace"}}>{fBRL(saldo)}</p>
           </div>
         </div>
 
-        {/* KPIs */}
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(5, 1fr)", gap: 14 }}>
+        {/* ── KPI cards ── */}
+        <div style={{display:"grid",gridTemplateColumns:"repeat(5,1fr)",gap:14}}>
           {[
-            { label: "Entradas", valor: totalEntradas, cor: AMBER, sub: `${entradasMes.length} registro(s)` },
-            { label: "Total gasto", valor: totalGastos, cor: "#fff", sub: `${gastosMes.length} lançamento(s)` },
-            { label: "Saldo", valor: saldo, cor: saldo >= 0 ? AMBER_BRIGHT : "#ef4444", sub: saldo >= 0 ? "positivo ✦" : "negativo ✕" },
-            { label: "Maior gasto", valor: gastosMes.length ? Math.max(...gastosMes.map(g => g.valor)) : 0, cor: "#aaa", sub: gastosMes.length ? gastosMes.find(g => g.valor === Math.max(...gastosMes.map(x => x.valor)))?.descricao ?? "—" : "—" },
-            { label: "Média/dia", valor: totalGastos / (hoje.getDate()), cor: "#666", sub: `base: ${hoje.getDate()} dias` },
-          ].map(item => (
-            <div key={item.label} style={{ background: "#0e0e0e", border: "1px solid #1a1a1a", borderRadius: 14, padding: "18px 20px" }}>
-              <p style={{ fontSize: 12, color: "#444", fontFamily: "'DM Mono', monospace", marginBottom: 8 }}>{item.label}</p>
-              <p style={{ fontSize: 20, fontWeight: 700, color: item.cor, fontFamily: "'DM Mono', monospace", marginBottom: 4 }}>{fBRL(item.valor)}</p>
-              <p style={{ fontSize: 11, color: "#333", fontFamily: "'DM Mono', monospace", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{item.sub}</p>
-            </div>
+            {label:"Entradas",    valor:totalE,      cor:C.amber,               sub:`${entradasMes.length} registro(s)`},
+            {label:"Total gasto", valor:totalG,      cor:C.white,               sub:`${gastosMes.length} lançamento(s)`},
+            {label:"Saldo",       valor:saldo,        cor:saldo>=0?C.amber:C.danger, sub:saldo>=0?"positivo ✦":"negativo ⚠"},
+            {label:"Maior gasto", valor:gastosMes.length?Math.max(...gastosMes.map(g=>g.valor)):0, cor:C.muted, sub:gastosMes.length?[...gastosMes].sort((a,b)=>b.valor-a.valor)[0]?.descricao||"—":"—"},
+            {label:"Média/dia",   valor:mediaDia,     cor:C.muted,              sub:`base: ${diasMes} dia${diasMes>1?"s":""}`},
+          ].map(item=>(
+            <Card key={item.label} style={{padding:"18px 20px"}}>
+              <Label>{item.label}</Label>
+              <p style={{fontSize:22,fontWeight:700,color:item.cor,fontFamily:"'DM Mono',monospace",marginBottom:6,lineHeight:1}}>{fBRL(item.valor)}</p>
+              <p style={{fontSize:12,color:C.muted2,fontFamily:"'DM Mono',monospace",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{item.sub}</p>
+            </Card>
           ))}
         </div>
 
-        {/* BARRA */}
-        <div style={{ background: "#0e0e0e", border: "1px solid #1a1a1a", borderRadius: 14, padding: "16px 24px" }}>
-          <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 10 }}>
-            <span style={{ fontSize: 13, color: "#555", fontFamily: "'DM Mono', monospace" }}>comprometimento da renda · {MESES[mes]}</span>
-            <span style={{ fontSize: 13, color: corBarra, fontFamily: "'DM Mono', monospace" }}>{fBRL(totalGastos)} de {fBRL(totalEntradas)}</span>
+        {/* ── Barra comprometimento ── */}
+        <Card style={{padding:"16px 22px"}}>
+          <div style={{display:"flex",justifyContent:"space-between",marginBottom:9}}>
+            <span style={{fontSize:14,color:C.muted,fontFamily:"'DM Mono',monospace"}}>comprometimento da renda · {MESES[mes]}</span>
+            <span style={{fontSize:14,color:corB,fontFamily:"'DM Mono',monospace",fontWeight:700}}>{fBRL(totalG)} de {fBRL(totalE)}</span>
           </div>
-          <div style={{ background: "#1a1a1a", borderRadius: 99, height: 10 }}>
-            <div style={{ width: `${Math.min(pct, 100)}%`, background: `linear-gradient(90deg, ${corBarra}88, ${corBarra})`, height: "100%", borderRadius: 99, transition: "width 0.6s" }} />
+          <div style={{background:C.border,borderRadius:99,height:10,position:"relative",overflow:"hidden"}}>
+            <div style={{position:"absolute",left:"60%",top:0,bottom:0,width:1,background:C.border2,zIndex:1}}/>
+            <div style={{position:"absolute",left:"80%",top:0,bottom:0,width:1,background:C.border2,zIndex:1}}/>
+            <div style={{width:`${Math.min(pctReal,100)}%`,background:`linear-gradient(90deg,${C.amberMid},${corB})`,height:"100%",transition:"width .6s"}}/>
           </div>
-        </div>
+          <div style={{display:"flex",justifyContent:"space-between",marginTop:6}}>
+            {["0% — livre","60% — ótimo","80% — alerta","100% — crítico"].map(l=>(
+              <span key={l} style={{fontSize:10,color:C.muted2,fontFamily:"'DM Mono',monospace"}}>{l}</span>
+            ))}
+          </div>
+        </Card>
 
-        {/* GRID PRINCIPAL */}
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 1.7fr", gap: 18 }}>
+        {/* ── Grid principal: 3 colunas ── */}
+        {/* Col 1: categorias + anual | Col 2: lançamentos (alto) | Col 3: saúde detalhada */}
+        <div style={{display:"grid",gridTemplateColumns:"300px 1fr 300px",gap:18,flex:1}}>
 
-          {/* Esquerda */}
-          <div style={{ display: "flex", flexDirection: "column", gap: 18 }}>
-            <div style={{ background: "#0e0e0e", border: "1px solid #1a1a1a", borderRadius: 14, padding: 22 }}>
-              <p style={{ fontFamily: "'Playfair Display', serif", fontSize: 18, marginBottom: 18, color: "#fff" }}>Gastos por categoria</p>
-              <BarChart gastos={gastosMes} />
-            </div>
-            <div style={{ background: "#0e0e0e", border: "1px solid #1a1a1a", borderRadius: 14, padding: 22 }}>
-              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-end", marginBottom: 16 }}>
-                <p style={{ fontFamily: "'Playfair Display', serif", fontSize: 18, color: "#fff" }}>Visão anual · {ano}</p>
-                <div style={{ display: "flex", gap: 12, alignItems: "center" }}>
-                  <span style={{ display: "flex", alignItems: "center", gap: 5, fontSize: 11, color: "#555", fontFamily: "'DM Mono', monospace" }}><span style={{ width: 10, height: 10, background: AMBER, borderRadius: 2, display: "inline-block" }} />entradas</span>
-                  <span style={{ display: "flex", alignItems: "center", gap: 5, fontSize: 11, color: "#555", fontFamily: "'DM Mono', monospace" }}><span style={{ width: 10, height: 10, background: "#fff", borderRadius: 2, display: "inline-block" }} />gastos</span>
-                </div>
-              </div>
-              <AnualChart gastos={gastos} entradas={entradas} />
-            </div>
-
-            {/* Entradas do mês */}
-            <div style={{ background: "#0e0e0e", border: `1px solid ${AMBER}22`, borderRadius: 14, padding: 22 }}>
-              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 14 }}>
-                <p style={{ fontFamily: "'Playfair Display', serif", fontSize: 18, color: AMBER }}>Entradas do mês</p>
-                <span style={{ fontSize: 11, color: "#444", fontFamily: "'DM Mono', monospace" }}>{entradasMes.length} registro(s)</span>
-              </div>
-              {entradasMes.length === 0 && <p style={emptyStyle}>Nenhuma entrada registrada</p>}
-              {[...entradasMes].sort((a,b) => new Date(b.data)-new Date(a.data)).map(e => {
-                const cat = CAT_ENTRADAS.find(c => c.nome === e.categoria) || CAT_ENTRADAS[4];
-                return (
-                  <div key={e.id} style={{ display: "flex", alignItems: "center", gap: 10, padding: "9px 0", borderBottom: "1px solid #111" }}>
-                    <span style={{ fontSize: 16 }}>{cat.emoji}</span>
-                    <div style={{ flex: 1 }}>
-                      <p style={{ fontSize: 13, color: "#ccc" }}>{e.descricao}</p>
-                      <p style={{ fontSize: 10, color: "#444", fontFamily: "'DM Mono', monospace" }}>{new Date(e.data+"T12:00:00").toLocaleDateString("pt-BR")} · {e.categoria}</p>
-                    </div>
-                    <span style={{ fontSize: 14, color: AMBER, fontFamily: "'DM Mono', monospace" }}>{fBRL(e.valor)}</span>
-                    <button onClick={() => onDelEntrada(e.id)} className="del-btn" style={{ opacity: 0, background: "transparent", border: "none", color: "#555", fontSize: 16, cursor: "pointer", padding: "0 4px", transition: "opacity .2s" }}>×</button>
-                  </div>
-                );
-              })}
-            </div>
+          {/* Col 1 */}
+          <div style={{display:"flex",flexDirection:"column",gap:18}}>
+            <Card style={{padding:"20px 22px"}}>
+              <p style={{fontFamily:"'Playfair Display',serif",fontSize:20,marginBottom:18}}>Gastos por categoria</p>
+              <BarChart gastos={gastosMes}/>
+            </Card>
+            <Card style={{padding:"20px 22px"}}>
+              <p style={{fontFamily:"'Playfair Display',serif",fontSize:20,marginBottom:18}}>Visão anual · {ano}</p>
+              <AnualChart gastos={gastos} entradas={entradas}/>
+            </Card>
           </div>
 
-          {/* Direita — Lançamentos */}
-          <div style={{ background: "#0e0e0e", border: "1px solid #1a1a1a", borderRadius: 14, padding: 22, display: "flex", flexDirection: "column" }}>
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
-              <p style={{ fontFamily: "'Playfair Display', serif", fontSize: 18, color: "#fff" }}>Lançamentos de gastos</p>
-              <span style={{ fontSize: 11, color: "#444", fontFamily: "'DM Mono', monospace" }}>{gastosMes.length} itens · {fBRL(totalGastos)}</span>
-            </div>
-            <div style={{ display: "grid", gridTemplateColumns: "2fr 1fr 1fr 90px 32px", gap: 8, padding: "0 0 10px", borderBottom: "1px solid #1a1a1a" }}>
-              {["Descrição","Categoria","Data","Valor",""].map((h,i) => (
-                <span key={i} style={{ fontSize: 11, color: "#333", fontFamily: "'DM Mono', monospace", textTransform: "uppercase", letterSpacing: 1 }}>{h}</span>
+          {/* Col 2: lançamentos */}
+          <Card style={{padding:"20px 22px",display:"flex",flexDirection:"column"}}>
+            <p style={{fontFamily:"'Playfair Display',serif",fontSize:20,marginBottom:18}}>Lançamentos de {MESES[mes]}</p>
+            <div style={{display:"grid",gridTemplateColumns:"2fr 1fr 1fr 90px 24px",gap:8,padding:"0 0 10px",borderBottom:`1px solid ${C.border}`}}>
+              {["Descrição","Categoria","Data","Valor",""].map((h,i)=>(
+                <span key={i} style={{fontSize:11,color:C.muted2,fontFamily:"'DM Mono',monospace",textTransform:"uppercase",letterSpacing:"0.08em"}}>{h}</span>
               ))}
             </div>
-            <div style={{ flex: 1, overflowY: "auto", marginTop: 6 }}>
-              {carregando && <p style={emptyStyle}>Carregando...</p>}
-              {!carregando && gastosMes.length === 0 && <p style={emptyStyle}>Nenhum lançamento este mês</p>}
-              {[...gastosMes].sort((a,b) => new Date(b.data)-new Date(a.data)).map(g => {
-                const cat = CAT_GASTOS.find(c => c.nome === g.categoria) || CAT_GASTOS[6];
-                return (
-                  <div key={g.id} className="row-t" style={{ display: "grid", gridTemplateColumns: "2fr 1fr 1fr 90px 32px", gap: 8, padding: "11px 0", borderBottom: "1px solid #111", alignItems: "center" }}>
-                    <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                      <span style={{ fontSize: 15 }}>{cat.emoji}</span>
-                      <span style={{ fontSize: 14, color: "#ddd", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{g.descricao}</span>
-                    </div>
-                    <span style={{ padding: "2px 8px", borderRadius: 20, fontSize: 11, background: AMBER+"18", color: AMBER, fontFamily: "'DM Mono', monospace", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{g.categoria}</span>
-                    <span style={{ fontSize: 12, color: "#444", fontFamily: "'DM Mono', monospace" }}>{new Date(g.data+"T12:00:00").toLocaleDateString("pt-BR")}</span>
-                    <span style={{ fontSize: 14, color: "#fff", fontFamily: "'DM Mono', monospace", textAlign: "right" }}>{fBRL(g.valor)}</span>
-                    <button onClick={() => onDelGasto(g.id)} className="del-btn" style={{ opacity: 0, background: "transparent", border: "none", color: "#555", fontSize: 16, cursor: "pointer", padding: "0 4px", transition: "opacity .2s" }}>×</button>
+            {/* Toggle */}
+            <div style={{display:"flex",gap:3,margin:"12px 0",background:C.border,borderRadius:10,padding:3,width:"fit-content"}}>
+              {[{id:"gastos",cor:C.white},{id:"entradas",cor:C.amber}].map(a=>(
+                <button key={a.id} onClick={()=>{}} style={{padding:"5px 16px",borderRadius:8,border:"none",cursor:"pointer",fontSize:12,fontFamily:"'DM Mono',monospace",background:C.border2,color:a.cor,textTransform:"capitalize"}}>{a.id}</button>
+              ))}
+            </div>
+            <div style={{flex:1,overflowY:"auto"}}>
+              {carregando&&<p style={{color:C.muted,fontSize:14,textAlign:"center",padding:"24px 0"}}>Carregando...</p>}
+              {/* Gastos */}
+              {gastosMes.length===0&&entradasMes.length===0&&!carregando&&<p style={{color:C.muted,fontSize:14,textAlign:"center",padding:"24px 0"}}>Nenhum lançamento este mês</p>}
+              {[...gastosMes].sort((a,b)=>new Date(b.data)-new Date(a.data)).map(g=>{
+                const cat=CATS_GASTO.find(c=>c.nome===g.categoria)||CATS_GASTO[6];
+                return(
+                  <div key={g.id} className="row-t" style={{display:"grid",gridTemplateColumns:"2fr 1fr 1fr 90px 24px",gap:8,padding:"12px 0",borderBottom:`1px solid ${C.border}18`,alignItems:"center"}}>
+                    <div style={{display:"flex",alignItems:"center",gap:9}}><span style={{fontSize:15}}>{cat.emoji}</span><span style={{fontSize:14,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{g.descricao}</span></div>
+                    <span style={{padding:"3px 9px",borderRadius:20,fontSize:11,background:C.border2,color:C.muted,fontFamily:"'DM Mono',monospace",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",display:"inline-block"}}>{g.categoria}</span>
+                    <span style={{fontSize:12,color:C.muted,fontFamily:"'DM Mono',monospace"}}>{new Date(g.data+"T12:00:00").toLocaleDateString("pt-BR")}</span>
+                    <span style={{fontSize:14,color:C.white,fontFamily:"'DM Mono',monospace",textAlign:"right"}}>{fBRL(g.valor)}</span>
+                    <button onClick={()=>onDelGasto(g.id)} className="del" style={{opacity:0,background:"transparent",border:"none",color:C.danger,fontSize:17,cursor:"pointer",transition:"opacity .2s"}}>×</button>
                   </div>
                 );
               })}
+              {/* Entradas */}
+              {entradasMes.length>0&&(
+                <>
+                  <div style={{padding:"14px 0 8px"}}><span style={{fontSize:11,color:C.amber,fontFamily:"'DM Mono',monospace",textTransform:"uppercase",letterSpacing:"0.1em"}}>entradas</span></div>
+                  {[...entradasMes].sort((a,b)=>new Date(b.data)-new Date(a.data)).map(e=>{
+                    const cat=CATS_ENTRADA.find(c=>c.nome===e.categoria)||CATS_ENTRADA[4];
+                    return(
+                      <div key={e.id} className="row-t" style={{display:"grid",gridTemplateColumns:"2fr 1fr 1fr 90px 24px",gap:8,padding:"12px 0",borderBottom:`1px solid ${C.border}18`,alignItems:"center"}}>
+                        <div style={{display:"flex",alignItems:"center",gap:9}}><span style={{fontSize:15}}>{cat.emoji}</span><span style={{fontSize:14,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{e.descricao}</span></div>
+                        <span style={{padding:"3px 9px",borderRadius:20,fontSize:11,background:C.amberLo,color:C.amber,fontFamily:"'DM Mono',monospace"}}>{e.categoria}</span>
+                        <span style={{fontSize:12,color:C.muted,fontFamily:"'DM Mono',monospace"}}>{new Date(e.data+"T12:00:00").toLocaleDateString("pt-BR")}</span>
+                        <span style={{fontSize:14,color:C.amber,fontFamily:"'DM Mono',monospace",textAlign:"right"}}>{fBRL(e.valor)}</span>
+                        <button onClick={()=>onDelEntrada(e.id)} className="del" style={{opacity:0,background:"transparent",border:"none",color:C.danger,fontSize:17,cursor:"pointer",transition:"opacity .2s"}}>×</button>
+                      </div>
+                    );
+                  })}
+                </>
+              )}
             </div>
-          </div>
+          </Card>
+
+          {/* Col 3: saúde detalhada */}
+          <PainelSaude pct={pctReal} saldo={saldo} gastosMes={gastosMes} renda={totalE}/>
         </div>
       </div>
     </div>
   );
 }
 
-// ─── ESTILOS COMPARTILHADOS ───────────────────────────────
-const card = { background: "#111", border: "1px solid #1a1a1a", borderRadius: 14, padding: "14px 16px" };
-const btnNav = { background: "#111", border: "1px solid #222", color: "#666", borderRadius: 8, padding: "6px 14px", cursor: "pointer", fontSize: 15 };
-const lbl = { fontSize: 11, color: "#444", fontFamily: "'DM Mono', monospace", display: "block", marginBottom: 6 };
-
-// ─── ROOT ─────────────────────────────────────────────────
-export default function App() {
-  const [gastos, setGastos] = useState([]);
+// ══════════════════════════════════════════════════════════
+// ROOT
+// ══════════════════════════════════════════════════════════
+export default function App(){
+  const [gastos,   setGastos]   = useState([]);
   const [entradas, setEntradas] = useState([]);
   const [carregando, setCarregando] = useState(true);
   const isMobile = useIsMobile();
 
-  useEffect(() => {
-    const u1 = onSnapshot(collection(db, "gastos"), snap => { setGastos(snap.docs.map(d => ({ id: d.id, ...d.data() }))); setCarregando(false); });
-    const u2 = onSnapshot(collection(db, "entradas"), snap => setEntradas(snap.docs.map(d => ({ id: d.id, ...d.data() }))));
-    return () => { u1(); u2(); };
-  }, []);
+  useEffect(()=>{
+    let ok1=false,ok2=false;
+    const u1=onSnapshot(collection(db,"gastos"),  snap=>{setGastos(snap.docs.map(d=>({id:d.id,...d.data()})));ok1=true;if(ok1&&ok2)setCarregando(false);});
+    const u2=onSnapshot(collection(db,"entradas"),snap=>{setEntradas(snap.docs.map(d=>({id:d.id,...d.data()})));ok2=true;if(ok1&&ok2)setCarregando(false);});
+    return()=>{u1();u2();};
+  },[]);
 
-  const onAddGasto = (d) => addDoc(collection(db, "gastos"), d);
-  const onAddEntrada = (d) => addDoc(collection(db, "entradas"), d);
-  const onDelGasto = (id) => deleteDoc(doc(db, "gastos", id));
-  const onDelEntrada = (id) => deleteDoc(doc(db, "entradas", id));
+  const onAddGasto   =(d)=>addDoc(collection(db,"gastos"),  d);
+  const onAddEntrada =(d)=>addDoc(collection(db,"entradas"),d);
+  const onDelGasto   =(id)=>deleteDoc(doc(db,"gastos",  id));
+  const onDelEntrada =(id)=>deleteDoc(doc(db,"entradas",id));
+  const props={gastos,entradas,carregando,onAddGasto,onAddEntrada,onDelGasto,onDelEntrada};
 
-  const props = { gastos, entradas, carregando, onAddGasto, onAddEntrada, onDelGasto, onDelEntrada };
-
-  return (
+  return(
     <>
       <style>{`
         @import url('https://fonts.googleapis.com/css2?family=Playfair+Display:wght@600;700&family=DM+Mono:wght@400;500&display=swap');
-        * { box-sizing: border-box; margin: 0; padding: 0; }
-        input, select, button { outline: none; font-family: inherit; }
-        body { background: #080808; }
-        .inp { background: #1a1a1a; border: 1px solid #2a2a2a; border-radius: 10px; padding: 10px 14px; color: #e2e8f0; font-size: 14px; width: 100%; transition: border .2s; font-family: 'DM Mono', monospace; }
-        .inp:focus { border-color: ${AMBER}; }
-        .row-t:hover .del-btn { opacity: 1 !important; }
-        .row-t:hover { background: #111; }
+        *,*::before,*::after{box-sizing:border-box;margin:0;padding:0;}
+        html,body{height:100%;}
+        body{background:#080808;color:#f2f2f2;}
+        input,select,button{outline:none;font-family:inherit;}
+        .inp{background:#181818;border:1px solid #252525;border-radius:10px;padding:10px 14px;color:#f2f2f2;font-size:15px;width:100%;transition:border .2s;font-family:'DM Mono',monospace;}
+        .inp:focus{border-color:#f59e0b;}
+        .inp::placeholder{color:#404040;}
+        .row-t:hover .del{opacity:1!important;}
+        ::-webkit-scrollbar{width:4px;}
+        ::-webkit-scrollbar-track{background:#0d0d0d;}
+        ::-webkit-scrollbar-thumb{background:#2a2a2a;border-radius:4px;}
+        option{background:#181818;color:#f2f2f2;}
+        input[type=date]::-webkit-calendar-picker-indicator{filter:invert(0.5);}
       `}</style>
-      {isMobile ? <MobileApp {...props} /> : <DesktopApp {...props} />}
+      {isMobile?<MobileApp {...props}/>:<DesktopApp {...props}/>}
     </>
   );
 }
