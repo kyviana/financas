@@ -498,17 +498,16 @@ function DesktopApp({gastos,entradas,carregando,onAddGasto,onAddEntrada,onDelGas
             <span style={{fontSize:12,color:C.muted,fontFamily:"'DM Mono',monospace"}}>{carregando?"sincronizando...":"ao vivo"}</span>
           </div>
         </div>
-<div style={{display:"flex",alignItems:"center",gap:10}}>
-  <button onClick={()=>mudar(-1)} style={{background:C.bg,border:`1px solid ${C.border}`,color:C.muted,borderRadius:9,padding:"7px 16px",cursor:"pointer",fontSize:16,lineHeight:1}}>←</button>
-  <span style={{fontFamily:"'Playfair Display',serif",fontSize:20,minWidth:200,textAlign:"center"}}>{MESES[mes]} {ano}</span>
-  <button onClick={()=>mudar(1)} style={{background:C.bg,border:`1px solid ${C.border}`,color:C.muted,borderRadius:9,padding:"7px 16px",cursor:"pointer",fontSize:16,lineHeight:1}}>→</button>
-  <button onClick={()=>setShowForm(!showForm)} style={{background:showForm?C.border2:C.white,color:C.bg,fontWeight:700,padding:"9px 22px",borderRadius:10,border:"none",fontSize:14,cursor:"pointer",transition:"all .2s"}}>
-    {showForm?"✕ Fechar":"+ Lançamento"}
-  </button>
-  <button onClick={()=>{setAbaForm("entrada");setShowForm(true);}} style={{background:C.amber,color:C.bg,fontWeight:700,padding:"9px 22px",borderRadius:10,border:"none",fontSize:14,cursor:"pointer"}}>+ Entrada</button>
-</div>
-
-      <div style={{flex:1,padding:"24px 36px",display:"flex",flexDirection:"column",gap:20,overflowY:"auto"}}>
+        <div style={{display:"flex",alignItems:"center",gap:10}}>
+          <button onClick={()=>mudar(-1)} style={{background:C.bg,border:`1px solid ${C.border}`,color:C.muted,borderRadius:9,padding:"7px 16px",cursor:"pointer",fontSize:16,lineHeight:1}}>←</button>
+          <span style={{fontFamily:"'Playfair Display',serif",fontSize:20,minWidth:200,textAlign:"center"}}>{MESES[mes]} {ano}</span>
+          <button onClick={()=>mudar(1)} style={{background:C.bg,border:`1px solid ${C.border}`,color:C.muted,borderRadius:9,padding:"7px 16px",cursor:"pointer",fontSize:16,lineHeight:1}}>→</button>
+          <button onClick={()=>setShowForm(!showForm)} style={{background:showForm?C.border2:C.white,color:C.bg,fontWeight:700,padding:"9px 22px",borderRadius:10,border:"none",fontSize:14,cursor:"pointer",transition:"all .2s"}}>
+            {showForm?"✕ Fechar":"+ Lançamento"}
+          </button>
+          <button onClick={()=>{setAbaForm("entrada");setShowForm(true);}} style={{background:C.amber,color:C.bg,fontWeight:700,padding:"9px 22px",borderRadius:10,border:"none",fontSize:14,cursor:"pointer"}}>+ Entrada</button>
+        </div>
+      </div>
 
         {/* ── Formulário ── */}
         {showForm&&(
