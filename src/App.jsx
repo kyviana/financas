@@ -823,6 +823,7 @@ function MobileApp({gastos,entradas,carregando,onAddGasto,onAddEntrada,onDelGast
   const [modal,setModal]=useState(null);
   const [aba,setAba]=useState("resumo");
   const [showPeriodo,setShowPeriodo]=useState(false);
+  const [showImport,setShowImport]=useState(false);
 
   const gastosMes  =useMemo(()=>gastos.filter(g=>{const d=toDate(g.data);return d.getMonth()===mes&&d.getFullYear()===ano;}),[gastos,mes,ano]);
   const entradasMes=useMemo(()=>entradas.filter(e=>{const d=toDate(e.data);return d.getMonth()===mes&&d.getFullYear()===ano;}),[entradas,mes,ano]);
@@ -952,6 +953,7 @@ function MobileApp({gastos,entradas,carregando,onAddGasto,onAddEntrada,onDelGast
       </div>
       {modal&&<Modal tipo={modal} onClose={()=>setModal(null)} onSave={async(d)=>{if(modal==="gasto")await onAddGasto(d);else await onAddEntrada(d);setModal(null);}}/>}
       {showPeriodo&&<PainelPeriodo gastos={gastos} entradas={entradas} onClose={()=>setShowPeriodo(false)}/>}
+      {showImport&&<PainelImportOFX onClose={()=>setShowImport(false)} onSalvar={async(tipo,d)=>{if(tipo==="gasto")await onAddGasto(d);else await onAddEntrada(d);}}/>}
     </div>
   );
 }
@@ -1018,6 +1020,7 @@ function DesktopApp({gastos,entradas,carregando,onAddGasto,onAddEntrada,onDelGas
           <button onClick={()=>mudar(1)} style={{background:C.bg,border:`1px solid ${C.border}`,color:C.muted,borderRadius:9,padding:"7px 14px",cursor:"pointer",fontSize:15,lineHeight:1}}>→</button>
           <div style={{width:1,height:20,background:C.border}}/>
           <button onClick={()=>setShowPeriodo(true)} style={{background:"transparent",border:`1px solid ${C.amber}55`,color:C.amber,fontWeight:600,padding:"7px 16px",borderRadius:9,fontSize:13,cursor:"pointer",whiteSpace:"nowrap",fontFamily:"'DM Mono',monospace"}}>📊 Análise</button>
+          <button onClick={()=>setShowImport(true)} style={{background:"transparent",border:`1px solid ${C.border2}`,color:C.muted,fontWeight:600,padding:"7px 16px",borderRadius:9,fontSize:13,cursor:"pointer",whiteSpace:"nowrap",fontFamily:"'DM Mono',monospace"}}>📥 OFX</button>
           <div style={{width:1,height:20,background:C.border}}/>
           <button onClick={()=>{setAbaForm("gasto");setShowForm(abaForm==="gasto"?!showForm:true);}} style={{background:showForm&&abaForm==="gasto"?C.border2:C.white,color:C.bg,fontWeight:700,padding:"8px 18px",borderRadius:10,border:"none",fontSize:13,cursor:"pointer",transition:"all .2s",whiteSpace:"nowrap"}}>
             {showForm&&abaForm==="gasto"?"✕ Fechar":"− Gasto"}
