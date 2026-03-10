@@ -122,16 +122,19 @@ function PainelSaude({pct,saldo,gastosMes,renda}){
   return(
     <div style={{display:"flex",flexDirection:"column",gap:18}}>
       {/* Status badge */}
-      <div style={{display:"flex",alignItems:"center",gap:14,padding:"18px 20px",background:s.cor+"14",border:`1px solid ${s.cor}44`,borderRadius:14}}>
-        <div style={{width:44,height:44,borderRadius:"50%",background:s.cor+"22",border:`2px solid ${s.cor}`,display:"flex",alignItems:"center",justifyContent:"center",fontSize:20,flexShrink:0}}>{s.icon}</div>
-        <div>
-          <p style={{fontSize:12,color:C.muted,fontFamily:"'DM Mono',monospace",textTransform:"uppercase",letterSpacing:"0.12em",marginBottom:4}}>saúde financeira</p>
-          <p style={{fontSize:22,fontWeight:700,color:s.cor,fontFamily:"'Playfair Display',serif",lineHeight:1}}>{s.label}</p>
+      <div style={{padding:"18px 20px",background:s.cor+"14",border:`1px solid ${s.cor}44`,borderRadius:14}}>
+        <div style={{display:"flex",alignItems:"center",gap:12,marginBottom:10}}>
+          <div style={{width:40,height:40,borderRadius:"50%",background:s.cor+"22",border:`2px solid ${s.cor}`,display:"flex",alignItems:"center",justifyContent:"center",fontSize:18,flexShrink:0}}>{s.icon}</div>
+          <div style={{flex:1,minWidth:0}}>
+            <p style={{fontSize:11,color:C.muted,fontFamily:"'DM Mono',monospace",textTransform:"uppercase",letterSpacing:"0.1em",marginBottom:3}}>saúde financeira</p>
+            <p style={{fontSize:20,fontWeight:700,color:s.cor,fontFamily:"'Playfair Display',serif",lineHeight:1}}>{s.label}</p>
+          </div>
+          <div style={{textAlign:"right",flexShrink:0}}>
+            <p style={{fontSize:11,color:C.muted,fontFamily:"'DM Mono',monospace",marginBottom:2}}>comprometido</p>
+            <p style={{fontSize:16,fontWeight:700,color:s.cor,fontFamily:"'DM Mono',monospace"}}>{pct.toFixed(1)}%</p>
+          </div>
         </div>
-        <div style={{marginLeft:"auto",textAlign:"right"}}>
-          <p style={{fontSize:12,color:C.muted,fontFamily:"'DM Mono',monospace",marginBottom:3}}>{pct.toFixed(1)}% comprometido</p>
-          <p style={{fontSize:13,color:C.muted,fontFamily:"'DM Mono',monospace"}}>{s.msg}</p>
-        </div>
+        <p style={{fontSize:12,color:C.muted,fontFamily:"'DM Mono',monospace",lineHeight:1.5,borderLeft:`3px solid ${s.cor}44`,paddingLeft:10}}>{s.msg}</p>
       </div>
 
       {/* Medidor */}
@@ -157,8 +160,8 @@ function PainelSaude({pct,saldo,gastosMes,renda}){
                 <span style={{fontSize:12,color:C.muted2,fontFamily:"'DM Mono',monospace",width:18}}>#{i+1}</span>
                 <span style={{fontSize:17}}>{c.emoji}</span>
                 <span style={{flex:1,fontSize:14,color:C.text}}>{c.nome}</span>
-                <span style={{fontSize:14,color:C.amber,fontFamily:"'DM Mono',monospace"}}>{fBRL(c.total)}</span>
-                {renda>0&&<span style={{fontSize:12,color:C.muted,fontFamily:"'DM Mono',monospace",width:36,textAlign:"right"}}>{((c.total/renda)*100).toFixed(0)}%</span>}
+                <span style={{fontSize:13,color:C.amber,fontFamily:"'DM Mono',monospace",whiteSpace:"nowrap"}}>{fBRL(c.total)}</span>
+                {renda>0&&<span style={{fontSize:11,color:C.muted,fontFamily:"'DM Mono',monospace",width:32,textAlign:"right",flexShrink:0}}>{((c.total/renda)*100).toFixed(0)}%</span>}
               </div>
             ))}
           </div>
@@ -544,18 +547,18 @@ function DesktopApp({gastos,entradas,carregando,onAddGasto,onAddEntrada,onDelGas
         )}
 
         {/* ── Banner saúde ── */}
-        <div style={{display:"flex",alignItems:"center",gap:16,padding:"16px 22px",background:saude.cor+"10",border:`1px solid ${saude.cor}33`,borderRadius:14}}>
+        <div style={{display:"flex",alignItems:"center",gap:16,padding:"16px 24px",background:saude.cor+"10",border:`1px solid ${saude.cor}33`,borderRadius:14,width:"100%",boxSizing:"border-box"}}>
           <div style={{width:46,height:46,borderRadius:"50%",background:saude.cor+"20",border:`2px solid ${saude.cor}`,display:"flex",alignItems:"center",justifyContent:"center",fontSize:20,flexShrink:0}}>{saude.icon}</div>
-          <div style={{flex:1}}>
-            <div style={{display:"flex",alignItems:"center",gap:12,marginBottom:4}}>
-              <span style={{fontFamily:"'Playfair Display',serif",fontSize:18,fontWeight:700,color:saude.cor}}>Saúde Financeira: {saude.label}</span>
-              <span style={{fontSize:12,color:C.muted,fontFamily:"'DM Mono',monospace",background:C.border,padding:"2px 10px",borderRadius:20}}>{pctReal.toFixed(1)}% comprometido</span>
+          <div style={{flex:1,minWidth:0}}>
+            <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:4,flexWrap:"wrap"}}>
+              <span style={{fontFamily:"'Playfair Display',serif",fontSize:18,fontWeight:700,color:saude.cor,whiteSpace:"nowrap"}}>Saúde Financeira: {saude.label}</span>
+              <span style={{fontSize:12,color:C.muted,fontFamily:"'DM Mono',monospace",background:C.border,padding:"2px 10px",borderRadius:20,whiteSpace:"nowrap"}}>{pctReal.toFixed(1)}% comprometido</span>
             </div>
-            <p style={{fontSize:13,color:C.muted,fontFamily:"'DM Mono',monospace"}}>{saude.msg}</p>
+            <p style={{fontSize:13,color:C.muted,fontFamily:"'DM Mono',monospace",whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{saude.msg}</p>
           </div>
-          <div style={{textAlign:"right",flexShrink:0}}>
+          <div style={{textAlign:"right",flexShrink:0,marginLeft:"auto"}}>
             <p style={{fontSize:12,color:C.muted,fontFamily:"'DM Mono',monospace",marginBottom:3}}>saldo do mês</p>
-            <p style={{fontSize:22,fontWeight:700,color:saldo>=0?C.amber:C.danger,fontFamily:"'DM Mono',monospace"}}>{fBRL(saldo)}</p>
+            <p style={{fontSize:24,fontWeight:700,color:saldo>=0?C.amber:C.danger,fontFamily:"'DM Mono',monospace",whiteSpace:"nowrap"}}>{fBRL(saldo)}</p>
           </div>
         </div>
 
@@ -570,7 +573,7 @@ function DesktopApp({gastos,entradas,carregando,onAddGasto,onAddEntrada,onDelGas
           ].map(item=>(
             <Card key={item.label} style={{padding:"18px 20px"}}>
               <Label>{item.label}</Label>
-              <p style={{fontSize:22,fontWeight:700,color:item.cor,fontFamily:"'DM Mono',monospace",marginBottom:6,lineHeight:1}}>{fBRL(item.valor)}</p>
+              <p style={{fontSize:18,fontWeight:700,color:item.cor,fontFamily:"'DM Mono',monospace",marginBottom:6,lineHeight:1,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{fBRL(item.valor)}</p>
               <p style={{fontSize:12,color:C.muted2,fontFamily:"'DM Mono',monospace",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{item.sub}</p>
             </Card>
           ))}
@@ -580,7 +583,7 @@ function DesktopApp({gastos,entradas,carregando,onAddGasto,onAddEntrada,onDelGas
         <Card style={{padding:"16px 22px"}}>
           <div style={{display:"flex",justifyContent:"space-between",marginBottom:9}}>
             <span style={{fontSize:14,color:C.muted,fontFamily:"'DM Mono',monospace"}}>comprometimento da renda · {MESES[mes]}</span>
-            <span style={{fontSize:14,color:corB,fontFamily:"'DM Mono',monospace",fontWeight:700}}>{fBRL(totalG)} de {fBRL(totalE)}</span>
+            <span style={{fontSize:13,color:corB,fontFamily:"'DM Mono',monospace",fontWeight:700,whiteSpace:"nowrap"}}>{fBRL(totalG)} de {fBRL(totalE)}</span>
           </div>
           <div style={{background:C.border,borderRadius:99,height:10,position:"relative",overflow:"hidden"}}>
             <div style={{position:"absolute",left:"60%",top:0,bottom:0,width:1,background:C.border2,zIndex:1}}/>
@@ -596,7 +599,7 @@ function DesktopApp({gastos,entradas,carregando,onAddGasto,onAddEntrada,onDelGas
 
         {/* ── Grid principal: 3 colunas ── */}
         {/* Col 1: categorias + anual | Col 2: lançamentos (alto) | Col 3: saúde detalhada */}
-        <div style={{display:"grid",gridTemplateColumns:"280px 1fr 280px",gap:16,minHeight:0}}>
+        <div style={{display:"grid",gridTemplateColumns:"22% 1fr 22%",gap:16,minHeight:0}}>
 
           {/* Col 1 */}
           <div style={{display:"flex",flexDirection:"column",gap:18}}>
