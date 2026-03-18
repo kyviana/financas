@@ -1,6 +1,6 @@
 import { useState, useMemo, useEffect, useRef } from "react";
 import { initializeApp } from "firebase/app";
-import { getFirestore, collection, addDoc, deleteDoc, doc, onSnapshot, updateDoc } from "firebase/firestore";
+import { getFirestore, collection, addDoc, deleteDoc, doc, onSnapshot, updateDoc, getDocs } from "firebase/firestore";
 
 const firebaseConfig = {
   apiKey: "AIzaSyDQhBVBogW5ww9b8bGRf9sDTLy0HLH2xAo",
@@ -1070,7 +1070,7 @@ function PainelReserva({onClose}){
     if(isNaN(v)||v<=0) return;
     setSalvando(true);
     // Buscar doc de meta existente para sobrescrever
-    const snap=await import("firebase/firestore").then(({getDocs})=>getDocs(collection(db,"reserva")));
+    const snap=await getDocs(collection(db,"reserva"));
     const metaDoc=snap.docs.find(d=>d.data().tipo==="meta");
     if(metaDoc){
       await updateDoc(doc(db,"reserva",metaDoc.id),{valor:v});
