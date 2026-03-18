@@ -305,14 +305,16 @@ function ItemLancamento({item,tipo,onDel,onUpdate}){
     <div style={{borderBottom:`1px solid ${C.border}22`,marginBottom:2}}>
       {/* Linha normal */}
       <div onClick={()=>setAberto(a=>!a)} className="row-t"
-        style={{display:"grid",gridTemplateColumns:"22px 1fr auto 20px",gap:6,padding:"9px 4px",alignItems:"center",cursor:"pointer",borderRadius:8,transition:"background .15s",background:aberto?C.surface2:"transparent"}}>
+        style={{display:"grid",gridTemplateColumns:"22px 1fr auto auto",gap:6,padding:"9px 4px",alignItems:"center",cursor:"pointer",borderRadius:8,transition:"background .15s",background:aberto?C.surface2:"transparent"}}>
         <span style={{fontSize:13,flexShrink:0}}>{cat.emoji}</span>
         <div style={{minWidth:0}}>
           <p style={{fontSize:12,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{item.descricao}</p>
           <p style={{fontSize:10,color:C.muted,fontFamily:"'DM Mono',monospace",marginTop:1}}>{toDate(item.data).toLocaleDateString("pt-BR")} · <span style={{...corCat,padding:"1px 5px",borderRadius:8,fontSize:9}}>{item.categoria}</span></p>
         </div>
         <span style={{fontSize:12,color:corValor,fontFamily:"'DM Mono',monospace",fontWeight:700,whiteSpace:"nowrap"}}>{fBRL(item.valor)}</span>
-        <span style={{fontSize:12,color:C.muted,transition:"transform .2s",display:"inline-block",transform:aberto?"rotate(180deg)":"rotate(0deg)"}}>▾</span>
+        <button onClick={e=>{e.stopPropagation();onDel();}} style={{background:"transparent",border:"none",color:C.muted2,fontSize:16,cursor:"pointer",lineHeight:1,padding:"0 2px",transition:"color .15s"}}
+          onMouseEnter={e=>e.currentTarget.style.color=C.danger}
+          onMouseLeave={e=>e.currentTarget.style.color=C.muted2}>×</button>
       </div>
 
       {/* Edição inline */}
