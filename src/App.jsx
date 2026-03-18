@@ -15,7 +15,7 @@ const db = getFirestore(firebaseApp);
 
 const C = {
   bg:"#080808",surface:"#101010",surface2:"#141414",border:"#1f1f1f",border2:"#282828",
-  text:"#f2f2f2",muted:"#606060",muted2:"#383838",
+  text:"#f2f2f2",muted:"#888888",muted2:"#505050",
   amber:"#f59e0b",amberLo:"#f59e0b1a",amberMid:"#f59e0b44",
   warn:"#fb923c",danger:"#ef4444",white:"#ffffff",
 };
