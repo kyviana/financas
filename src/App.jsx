@@ -1233,7 +1233,7 @@ function PainelReserva({onClose}){
   );
 }
 
-{gastos,entradas,carregando,onAddGasto,onAddEntrada,onDelGasto,onDelEntrada,onUpdateGasto,onUpdateEntrada}){
+function DesktopApp({gastos,entradas,carregando,onAddGasto,onAddEntrada,onDelGasto,onDelEntrada,onUpdateGasto,onUpdateEntrada}){
   const hoje=new Date();
   const [mes,setMes]=useState(hoje.getMonth());
   const [ano,setAno]=useState(hoje.getFullYear());
