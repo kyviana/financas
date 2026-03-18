@@ -1027,9 +1027,213 @@ function MobileApp({gastos,entradas,carregando,onAddGasto,onAddEntrada,onDelGast
 // ══════════════════════════════════════════════════════════
 // DESKTOP
 // ══════════════════════════════════════════════════════════
-const lbl={fontSize:11,color:"#505050",fontFamily:"'DM Mono',monospace",textTransform:"uppercase",letterSpacing:"0.08em",display:"block",marginBottom:7};
+// ── PainelReserva ─────────────────────────────────────────
+function PainelReserva({onClose}){
+  const [reserva,   setReserva]   = useState(null);
+  const [meta,      setMeta]      = useState(null);
+  const [historico, setHistorico] = useState([]);
+  const [loading,   setLoading]   = useState(true);
+  const [aba,       setAba]       = useState("visao"); // visao | atualizar | meta
+  const [novoValor, setNovoValor] = useState("");
+  const [novaMeta,  setNovaMeta]  = useState("");
+  const [salvando,  setSalvando]  = useState(false);
 
-function DesktopApp({gastos,entradas,carregando,onAddGasto,onAddEntrada,onDelGasto,onDelEntrada,onUpdateGasto,onUpdateEntrada}){
+  // Carregar dados do Firebase
+  useEffect(()=>{
+    const unsub=onSnapshot(collection(db,"reserva"), snap=>{
+      const docs=snap.docs.map(d=>({id:d.id,...d.data()}));
+      const snapshots=docs.filter(d=>d.tipo==="snapshot").sort((a,b)=>new Date(b.data)-new Date(a.data));
+      const metaDoc=docs.find(d=>d.tipo==="meta");
+      if(snapshots.length>0){
+        setReserva(snapshots[0].valor);
+        setHistorico(snapshots.slice(0,12));
+      }
+      if(metaDoc) setMeta(metaDoc.valor);
+      setLoading(false);
+    });
+    return()=>unsub();
+  },[]);
+
+  const salvarValor=async()=>{
+    const v=parseFloat(novoValor.replace(",","."));
+    if(isNaN(v)||v<0) return;
+    setSalvando(true);
+    const hoje=today();
+    await addDoc(collection(db,"reserva"),{tipo:"snapshot",valor:v,data:hoje});
+    setNovoValor("");
+    setSalvando(false);
+    setAba("visao");
+  };
+
+  const salvarMeta=async()=>{
+    const v=parseFloat(novaMeta.replace(",","."));
+    if(isNaN(v)||v<=0) return;
+    setSalvando(true);
+    // Buscar doc de meta existente para sobrescrever
+    const snap=await import("firebase/firestore").then(({getDocs})=>getDocs(collection(db,"reserva")));
+    const metaDoc=snap.docs.find(d=>d.data().tipo==="meta");
+    if(metaDoc){
+      await updateDoc(doc(db,"reserva",metaDoc.id),{valor:v});
+    } else {
+      await addDoc(collection(db,"reserva"),{tipo:"meta",valor:v});
+    }
+    setNovaMeta("");
+    setSalvando(false);
+    setAba("visao");
+  };
+
+  const pctMeta = meta&&reserva ? Math.min((reserva/meta)*100,100) : 0;
+  const corMeta = pctMeta>=100?C.amber:pctMeta>=60?C.warn:"#4ade80";
+  const anterior = historico.length>1?historico[1].valor:null;
+  const variacao = reserva!=null&&anterior!=null?reserva-anterior:null;
+
+  return(
+    <div style={{position:"fixed",inset:0,background:"#000000bb",zIndex:200,display:"flex",alignItems:"stretch",justifyContent:"flex-end"}} onClick={onClose}>
+      <div style={{width:"min(480px,92vw)",background:C.bg,borderLeft:`1px solid ${C.border}`,display:"flex",flexDirection:"column",overflow:"hidden"}} onClick={e=>e.stopPropagation()}>
+
+        {/* Header */}
+        <div style={{padding:"20px 26px",borderBottom:`1px solid ${C.border}`,display:"flex",justifyContent:"space-between",alignItems:"center",background:C.surface,flexShrink:0}}>
+          <div>
+            <h2 style={{fontFamily:"'Playfair Display',serif",fontSize:20,fontWeight:700}}>Reserva <span style={{color:C.amber}}>Financeira</span></h2>
+            <p style={{fontSize:11,color:C.muted,fontFamily:"'DM Mono',monospace",marginTop:3}}>saldo atual · meta · histórico</p>
+          </div>
+          <button onClick={onClose} style={{background:C.border,border:"none",color:C.muted,borderRadius:10,padding:"7px 13px",cursor:"pointer",fontSize:18,lineHeight:1}}>✕</button>
+        </div>
+
+        {/* Abas */}
+        <div style={{display:"flex",gap:3,padding:"12px 26px",borderBottom:`1px solid ${C.border}`,background:C.surface,flexShrink:0}}>
+          {[["visao","👁 Visão"],["atualizar","✏️ Atualizar"],["meta","🎯 Meta"]].map(([k,l])=>(
+            <button key={k} onClick={()=>setAba(k)} style={{background:aba===k?C.amber:C.border,color:aba===k?C.bg:C.muted,border:"none",borderRadius:8,padding:"6px 14px",cursor:"pointer",fontSize:12,fontFamily:"'DM Mono',monospace",fontWeight:aba===k?700:400,transition:"all .15s"}}>{l}</button>
+          ))}
+        </div>
+
+        <div style={{flex:1,overflowY:"auto",padding:"24px 26px"}}>
+          {loading&&<p style={{color:C.muted,textAlign:"center",padding:"40px 0",fontFamily:"'DM Mono',monospace"}}>Carregando...</p>}
+
+          {/* Aba: Visão */}
+          {!loading&&aba==="visao"&&(
+            <div style={{display:"flex",flexDirection:"column",gap:20}}>
+
+              {/* Valor atual */}
+              <Card style={{padding:24,textAlign:"center"}}>
+                {reserva!=null?(
+                  <>
+                    <p style={{fontSize:11,color:C.muted,fontFamily:"'DM Mono',monospace",marginBottom:8,textTransform:"uppercase",letterSpacing:"0.1em"}}>Reserva atual</p>
+                    <p style={{fontFamily:"'Playfair Display',serif",fontSize:38,fontWeight:700,color:C.amber,lineHeight:1}}>{fBRL(reserva)}</p>
+                    {variacao!=null&&(
+                      <p style={{fontSize:12,color:variacao>=0?"#4ade80":C.danger,fontFamily:"'DM Mono',monospace",marginTop:10}}>
+                        {variacao>=0?"▲":"▼"} {fBRL(Math.abs(variacao))} desde o último registro
+                      </p>
+                    )}
+                  </>
+                ):(
+                  <div>
+                    <p style={{fontSize:32,marginBottom:12}}>🏦</p>
+                    <p style={{color:C.muted,fontSize:14,fontFamily:"'DM Mono',monospace",marginBottom:16}}>Nenhum valor registrado ainda</p>
+                    <button onClick={()=>setAba("atualizar")} style={{background:C.amber,color:C.bg,fontWeight:700,padding:"10px 24px",borderRadius:10,border:"none",cursor:"pointer",fontSize:13}}>Registrar agora</button>
+                  </div>
+                )}
+              </Card>
+
+              {/* Barra de meta */}
+              {meta&&reserva!=null&&(
+                <Card style={{padding:20}}>
+                  <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:10}}>
+                    <p style={{fontSize:12,color:C.muted,fontFamily:"'DM Mono',monospace",textTransform:"uppercase",letterSpacing:"0.08em"}}>🎯 Meta</p>
+                    <p style={{fontSize:13,color:C.white,fontFamily:"'DM Mono',monospace",fontWeight:700}}>{fBRL(meta)}</p>
+                  </div>
+                  <div style={{background:C.border,borderRadius:99,height:12,marginBottom:10,overflow:"hidden"}}>
+                    <div style={{width:`${pctMeta}%`,background:corMeta,height:"100%",borderRadius:99,transition:"width .6s ease"}}/>
+                  </div>
+                  <div style={{display:"flex",justifyContent:"space-between"}}>
+                    <span style={{fontSize:11,color:C.muted,fontFamily:"'DM Mono',monospace"}}>{pctMeta.toFixed(1)}% atingido</span>
+                    {pctMeta<100&&<span style={{fontSize:11,color:C.muted,fontFamily:"'DM Mono',monospace"}}>faltam {fBRL(meta-reserva)}</span>}
+                    {pctMeta>=100&&<span style={{fontSize:11,color:C.amber,fontFamily:"'DM Mono',monospace"}}>✦ Meta atingida!</span>}
+                  </div>
+                </Card>
+              )}
+
+              {/* Sem meta */}
+              {!meta&&reserva!=null&&(
+                <button onClick={()=>setAba("meta")} style={{background:"transparent",border:`1px dashed ${C.border2}`,color:C.muted,borderRadius:12,padding:"14px",cursor:"pointer",fontSize:13,fontFamily:"'DM Mono',monospace",width:"100%"}}>
+                  🎯 Definir uma meta de reserva
+                </button>
+              )}
+
+              {/* Histórico */}
+              {historico.length>0&&(
+                <Card style={{padding:20}}>
+                  <p style={{fontSize:11,color:C.muted,fontFamily:"'DM Mono',monospace",textTransform:"uppercase",letterSpacing:"0.08em",marginBottom:14}}>Histórico de registros</p>
+                  {historico.map((h,i)=>{
+                    const varH=i<historico.length-1?h.valor-historico[i+1].valor:null;
+                    return(
+                      <div key={h.id} style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"8px 0",borderBottom:i<historico.length-1?`1px solid ${C.border}18`:"none"}}>
+                        <span style={{fontSize:11,color:C.muted,fontFamily:"'DM Mono',monospace"}}>{toDate(h.data).toLocaleDateString("pt-BR")}</span>
+                        <div style={{display:"flex",alignItems:"center",gap:10}}>
+                          {varH!=null&&<span style={{fontSize:10,color:varH>=0?"#4ade80":C.danger,fontFamily:"'DM Mono',monospace"}}>{varH>=0?"+":""}{fBRL(varH)}</span>}
+                          <span style={{fontSize:13,color:i===0?C.amber:C.muted,fontFamily:"'DM Mono',monospace",fontWeight:i===0?700:400}}>{fBRL(h.valor)}</span>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </Card>
+              )}
+            </div>
+          )}
+
+          {/* Aba: Atualizar */}
+          {!loading&&aba==="atualizar"&&(
+            <div style={{display:"flex",flexDirection:"column",gap:16}}>
+              <Card style={{padding:20}}>
+                <p style={{fontSize:13,color:C.muted,fontFamily:"'DM Mono',monospace",marginBottom:20,lineHeight:1.6}}>
+                  Informe o saldo atual da sua reserva. Um novo registro será salvo com a data de hoje.
+                </p>
+                {reserva!=null&&(
+                  <div style={{background:C.surface2,borderRadius:10,padding:"12px 16px",marginBottom:16,display:"flex",justifyContent:"space-between"}}>
+                    <span style={{fontSize:12,color:C.muted,fontFamily:"'DM Mono',monospace"}}>Valor atual</span>
+                    <span style={{fontSize:13,color:C.amber,fontFamily:"'DM Mono',monospace",fontWeight:700}}>{fBRL(reserva)}</span>
+                  </div>
+                )}
+                <p style={{fontSize:10,color:C.muted,fontFamily:"'DM Mono',monospace",marginBottom:6,textTransform:"uppercase",letterSpacing:"0.08em"}}>Novo saldo (R$)</p>
+                <input className="inp" placeholder="ex: 3500.00" value={novoValor}
+                  onChange={e=>setNovoValor(e.target.value)}
+                  onKeyDown={e=>e.key==="Enter"&&salvarValor()}
+                  style={{marginBottom:16,fontSize:20,textAlign:"center",letterSpacing:"0.05em"}}/>
+                <button onClick={salvarValor} disabled={salvando||!novoValor}
+                  style={{background:novoValor?C.amber:"#333",color:C.bg,fontWeight:700,padding:"12px",borderRadius:10,border:"none",cursor:novoValor?"pointer":"not-allowed",fontSize:14,width:"100%",transition:"background .2s"}}>
+                  {salvando?"Salvando...":"Salvar registro"}
+                </button>
+              </Card>
+            </div>
+          )}
+
+          {/* Aba: Meta */}
+          {!loading&&aba==="meta"&&(
+            <div style={{display:"flex",flexDirection:"column",gap:16}}>
+              <Card style={{padding:20}}>
+                <p style={{fontSize:13,color:C.muted,fontFamily:"'DM Mono',monospace",marginBottom:20,lineHeight:1.6}}>
+                  {meta?`Meta atual: ${fBRL(meta)}. Digite um novo valor para alterar.`:"Defina quanto você quer ter guardado como reserva de emergência."}
+                </p>
+                <p style={{fontSize:10,color:C.muted,fontFamily:"'DM Mono',monospace",marginBottom:6,textTransform:"uppercase",letterSpacing:"0.08em"}}>Meta de reserva (R$)</p>
+                <input className="inp" placeholder={meta?String(meta):"ex: 10000"} value={novaMeta}
+                  onChange={e=>setNovaMeta(e.target.value)}
+                  onKeyDown={e=>e.key==="Enter"&&salvarMeta()}
+                  style={{marginBottom:8,fontSize:20,textAlign:"center",letterSpacing:"0.05em"}}/>
+                <p style={{fontSize:11,color:C.muted2,fontFamily:"'DM Mono',monospace",marginBottom:16,textAlign:"center"}}>💡 Especialistas recomendam 3 a 6 meses de despesas</p>
+                <button onClick={salvarMeta} disabled={salvando||!novaMeta}
+                  style={{background:novaMeta?C.amber:"#333",color:C.bg,fontWeight:700,padding:"12px",borderRadius:10,border:"none",cursor:novaMeta?"pointer":"not-allowed",fontSize:14,width:"100%",transition:"background .2s"}}>
+                  {salvando?"Salvando...":"Definir meta"}
+                </button>
+              </Card>
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+{gastos,entradas,carregando,onAddGasto,onAddEntrada,onDelGasto,onDelEntrada,onUpdateGasto,onUpdateEntrada}){
   const hoje=new Date();
   const [mes,setMes]=useState(hoje.getMonth());
   const [ano,setAno]=useState(hoje.getFullYear());
@@ -1037,6 +1241,7 @@ function DesktopApp({gastos,entradas,carregando,onAddGasto,onAddEntrada,onDelGas
   const [showForm,setShowForm]=useState(false);
   const [showPeriodo,setShowPeriodo]=useState(false);
   const [showImport,setShowImport]=useState(false);
+  const [showReserva,setShowReserva]=useState(false);
   const [formG,setFormG]=useState({descricao:"",valor:"",categoria:"Alimentação",data:today()});
   const [formE,setFormE]=useState({descricao:"Salário",valor:"",categoria:"Salário",data:today()});
 
@@ -1087,6 +1292,7 @@ function DesktopApp({gastos,entradas,carregando,onAddGasto,onAddEntrada,onDelGas
           <div style={{width:1,height:20,background:C.border}}/>
           <button onClick={()=>setShowPeriodo(true)} style={{background:"transparent",border:`1px solid ${C.amber}55`,color:C.amber,fontWeight:600,padding:"7px 16px",borderRadius:9,fontSize:13,cursor:"pointer",whiteSpace:"nowrap",fontFamily:"'DM Mono',monospace"}}>📊 Análise</button>
           <button onClick={()=>setShowImport(true)} style={{background:"transparent",border:`1px solid ${C.border2}`,color:C.muted,fontWeight:600,padding:"7px 16px",borderRadius:9,fontSize:13,cursor:"pointer",whiteSpace:"nowrap",fontFamily:"'DM Mono',monospace"}}>📥 OFX</button>
+          <button onClick={()=>setShowReserva(true)} style={{background:"transparent",border:`1px solid #4ade8033`,color:"#4ade80",fontWeight:600,padding:"7px 16px",borderRadius:9,fontSize:13,cursor:"pointer",whiteSpace:"nowrap",fontFamily:"'DM Mono',monospace"}}>🏦 Reserva</button>
           <div style={{width:1,height:20,background:C.border}}/>
           <button onClick={()=>{setAbaForm("gasto");setShowForm(abaForm==="gasto"?!showForm:true);}} style={{background:showForm&&abaForm==="gasto"?C.border2:C.white,color:C.bg,fontWeight:700,padding:"8px 18px",borderRadius:10,border:"none",fontSize:13,cursor:"pointer",transition:"all .2s",whiteSpace:"nowrap"}}>
             {showForm&&abaForm==="gasto"?"✕ Fechar":"− Gasto"}
@@ -1236,6 +1442,7 @@ function DesktopApp({gastos,entradas,carregando,onAddGasto,onAddEntrada,onDelGas
 
       {showPeriodo&&<PainelPeriodo gastos={gastos} entradas={entradas} onClose={()=>setShowPeriodo(false)}/>}
       {showImport&&<PainelImportOFX onClose={()=>setShowImport(false)} onSalvar={async(tipo,d)=>{if(tipo==="gasto")await onAddGasto(d);else await onAddEntrada(d);}}/>}
+      {showReserva&&<PainelReserva onClose={()=>setShowReserva(false)}/>}
     </div>
   );
 }
