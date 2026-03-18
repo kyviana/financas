@@ -1233,6 +1233,8 @@ function PainelReserva({onClose}){
   );
 }
 
+const lbl={fontSize:11,color:"#505050",fontFamily:"'DM Mono',monospace",textTransform:"uppercase",letterSpacing:"0.08em",display:"block",marginBottom:7};
+
 function DesktopApp({gastos,entradas,carregando,onAddGasto,onAddEntrada,onDelGasto,onDelEntrada,onUpdateGasto,onUpdateEntrada}){
   const hoje=new Date();
   const [mes,setMes]=useState(hoje.getMonth());
