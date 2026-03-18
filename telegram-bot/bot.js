@@ -17,14 +17,15 @@ const bot = new TelegramBot(BOT_TOKEN, { polling: true });
 
 // ── Categorias ────────────────────────────────────────────
 const CATS_GASTO = [
-  "Alimentação","Transporte","Lazer","Saúde","Moradia","Educação","Outros"
+  "Alimentação","Transporte","Lazer","Saúde","Moradia","Educação","Família","Contas","Empréstimo/Cartão","E-commerce","Outros"
 ];
 const CATS_ENTRADA = [
   "Salário","Freelance","Investimento","Presente","Outros"
 ];
 const EMOJIS_GASTO = {
   "Alimentação":"🍽️","Transporte":"🚌","Lazer":"🎮",
-  "Saúde":"💊","Moradia":"🏠","Educação":"📚","Outros":"📦"
+  "Saúde":"💊","Moradia":"🏠","Educação":"📚",
+  "Família":"👨‍👩‍👧","Contas":"📄","Empréstimo/Cartão":"💳","E-commerce":"🛒","Outros":"📦"
 };
 const EMOJIS_ENTRADA = {
   "Salário":"💼","Freelance":"💻","Investimento":"📈",
