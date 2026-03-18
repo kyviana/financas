@@ -1,6 +1,6 @@
 import { useState, useMemo, useEffect, useRef } from "react";
 import { initializeApp } from "firebase/app";
-import { getFirestore, collection, addDoc, deleteDoc, doc, onSnapshot } from "firebase/firestore";
+import { getFirestore, collection, addDoc, deleteDoc, doc, onSnapshot, updateDoc } from "firebase/firestore";
 
 const firebaseConfig = {
   apiKey: "AIzaSyDQhBVBogW5ww9b8bGRf9sDTLy0HLH2xAo",
@@ -28,6 +28,326 @@ const fBRL   = v => v.toLocaleString("pt-BR",{style:"currency",currency:"BRL"});
 const fShort = v => v>=1000?`R$${(v/1000).toFixed(1)}k`:`R$${v.toFixed(0)}`;
 const toDate = s => new Date(s+"T12:00:00");
 const today  = () => new Date().toISOString().split("T")[0];
+
+// ── OFX Parser ────────────────────────────────────────────
+function parseOFX(texto) {
+  const transacoes = [];
+  const blocos = texto.match(/<STMTTRN>[\s\S]*?<\/STMTTRN>/g) || [];
+  blocos.forEach(b => {
+    const get = tag => { const m = b.match(new RegExp(`<${tag}>([^<]*)`)); return m ? m[1].trim() : ""; };
+    const tipo  = get("TRNTYPE");
+    const dtRaw = get("DTPOSTED");
+    const valor = parseFloat(get("TRNAMT").replace(",","."));
+    const nome  = get("NAME");
+    const memo  = get("MEMO");
+    // Ignorar saldos internos e datas inválidas
+    if(nome==="Saldo do dia"||nome==="Saldo Anterior") return;
+    if(!dtRaw||dtRaw.startsWith("0002")) return;
+    if(isNaN(valor)||valor===0) return;
+    // Converter data YYYYMMDD → YYYY-MM-DD
+    const ano=dtRaw.slice(0,4), mes=dtRaw.slice(4,6), dia=dtRaw.slice(6,8);
+    const data=`${ano}-${mes}-${dia}`;
+    // Usar data do memo se disponível (BB registra a data real no memo)
+    let dataReal=data;
+    const memoData=memo.match(/^(\d{2})\/(\d{2})/);
+    if(memoData) {
+      dataReal=`${ano}-${memoData[2]}-${memoData[1]}`;
+    }
+    transacoes.push({ tipo, valor:Math.abs(valor), nome, memo, data:dataReal, dataOriginal:data });
+  });
+  return transacoes;
+}
+
+// ── Sugestor de categoria ─────────────────────────────────
+function sugerirCategoria(nome, memo, tipo) {
+  if(tipo==="CREDIT") {
+    const t=(nome+" "+memo).toUpperCase();
+    if(t.includes("SALARIO")||t.includes("SALÁRIO")||t.includes("FOLHA")) return{col:"entrada",cat:"Salário"};
+    if(t.includes("FREELANCE")||t.includes("SERVICO")||t.includes("SERVIÇO")) return{col:"entrada",cat:"Freelance"};
+    if(t.includes("INVESTIMENTO")||t.includes("RENDIMENTO")||t.includes("CDB")||t.includes("POUPANÇA")) return{col:"entrada",cat:"Investimento"};
+    if(t.includes("DEP DINHEIRO")||t.includes("DEPOSITO")||t.includes("DEPÓSITO")||t.includes("ATM")) return{col:"entrada",cat:"Outros"};
+    if(t.includes("TRANSFERENCIA")||t.includes("TRANSFERÊNCIA")||t.includes("PIX")) return{col:"entrada",cat:"Outros"};
+    return{col:"entrada",cat:"Outros"};
+  }
+  const t=(nome+" "+memo).toUpperCase();
+  if(t.includes("SUPERMERCADO")||t.includes("MERCADO")||t.includes("ACAI")||t.includes("AÇAÍ")||t.includes("PIZZA")||t.includes("HAMBURGU")||t.includes("BURGER")||t.includes("RESTAUR")||t.includes("LANCH")||t.includes("PADARIA")||t.includes("ASSAI")||t.includes("ATACAD")||t.includes("LAGOA")) return{col:"gasto",cat:"Alimentação"};
+  if(t.includes("UBER")||t.includes("POSTO")||t.includes("COMBUSTIVEL")||t.includes("COMBUSTÍVEL")||t.includes("ONIBUS")||t.includes("ÔNIBUS")||t.includes("TAXI")||t.includes("99POP")||t.includes("TRANSPORT")) return{col:"gasto",cat:"Transporte"};
+  if(t.includes("FARMACIA")||t.includes("FARMÁCIA")||t.includes("FARMA")||t.includes("DROGARIA")||t.includes("MEDICO")||t.includes("MÉDICO")||t.includes("HOSPITAL")||t.includes("CLINICA")||t.includes("CLÍNICA")) return{col:"gasto",cat:"Saúde"};
+  if(t.includes("BRISANET")||t.includes("INTERNET")||t.includes("CLARO")||t.includes("VIVO")||t.includes("TIM")||t.includes("OI")||t.includes("TELEFO")||t.includes("PRE-PAGO")||t.includes("GLOBO")) return{col:"gasto",cat:"Moradia"};
+  if(t.includes("BOLETO")||t.includes("AGUA")||t.includes("ÁGUA")||t.includes("LUZ")||t.includes("ENERGIA")||t.includes("ALUGUEL")||t.includes("CONDOM")) return{col:"gasto",cat:"Moradia"};
+  if(t.includes("ESCOLA")||t.includes("FACUL")||t.includes("CURSO")||t.includes("LIVRO")||t.includes("EDUCAC")||t.includes("EDUCAÇ")) return{col:"gasto",cat:"Educação"};
+  if(t.includes("CINEMA")||t.includes("THEATER")||t.includes("SHOW")||t.includes("JOGO")||t.includes("SPOTIFY")||t.includes("NETFLIX")||t.includes("AMAZON")) return{col:"gasto",cat:"Lazer"};
+  if(t.includes("TARIFA")||t.includes("IOF")||t.includes("ANUIDADE")) return{col:"gasto",cat:"Outros"};
+  return{col:"gasto",cat:"Outros"};
+}
+
+// ── PainelImportOFX ───────────────────────────────────────
+function PainelImportOFX({onClose,onSalvar}){
+  const [etapa,setEtapa]=useState("upload"); // upload | revisar | salvando | concluido
+  const [itens,setItens]=useState([]);
+  const [selecionados,setSelecionados]=useState({});
+  const [salvando,setSalvando]=useState(false);
+  const [progresso,setProgresso]=useState(0);
+  const inputRef=useRef(null);
+
+  const lerArquivo=(file)=>{
+    const reader=new FileReader();
+    reader.onload=(e)=>{
+      const texto=e.target.result;
+      const transacoes=parseOFX(texto);
+      const comCat=transacoes.map((t,i)=>({
+        ...t,
+        id:i,
+        ...sugerirCategoria(t.nome,t.memo,t.tipo),
+        descricao: t.memo||t.nome,
+      }));
+      setItens(comCat);
+      // Selecionar todos por padrão
+      const sel={};
+      comCat.forEach(t=>sel[t.id]=true);
+      setSelecionados(sel);
+      setEtapa("revisar");
+    };
+    reader.readAsText(file,"UTF-8");
+  };
+
+  const onDrop=(e)=>{
+    e.preventDefault();
+    const file=e.dataTransfer?.files[0]||e.target.files[0];
+    if(file) lerArquivo(file);
+  };
+
+  const toggleItem=(id)=>setSelecionados(s=>({...s,[id]:!s[id]}));
+  const toggleTodos=(col)=>{
+    const doCol=itens.filter(i=>i.col===col);
+    const todosOn=doCol.every(i=>selecionados[i.id]);
+    const novo={...selecionados};
+    doCol.forEach(i=>novo[i.id]=!todosOn);
+    setSelecionados(novo);
+  };
+
+  const atualizarItem=(id,campo,valor)=>{
+    setItens(its=>its.map(it=>it.id===id?{...it,[campo]:valor}:it));
+  };
+
+  const salvar=async()=>{
+    setSalvando(true);
+    setEtapa("salvando");
+    const paraGasto =itens.filter(i=>selecionados[i.id]&&i.col==="gasto");
+    const paraEntrada=itens.filter(i=>selecionados[i.id]&&i.col==="entrada");
+    const total=paraGasto.length+paraEntrada.length;
+    let feitos=0;
+    for(const g of paraGasto){
+      await onSalvar("gasto",{descricao:g.descricao,valor:g.valor,categoria:g.cat,data:g.data});
+      feitos++;setProgresso(Math.round((feitos/total)*100));
+    }
+    for(const e of paraEntrada){
+      await onSalvar("entrada",{descricao:e.descricao,valor:e.valor,categoria:e.cat,data:e.data});
+      feitos++;setProgresso(Math.round((feitos/total)*100));
+    }
+    setEtapa("concluido");
+    setSalvando(false);
+  };
+
+  const gastosP =itens.filter(i=>i.col==="gasto");
+  const entradasP=itens.filter(i=>i.col==="entrada");
+  const totalGSel=gastosP.filter(i=>selecionados[i.id]).reduce((s,i)=>s+i.valor,0);
+  const totalESel=entradasP.filter(i=>selecionados[i.id]).reduce((s,i)=>s+i.valor,0);
+  const qtdSel=Object.values(selecionados).filter(Boolean).length;
+
+  return(
+    <div style={{position:"fixed",inset:0,background:"#000000cc",zIndex:200,display:"flex",alignItems:"stretch",justifyContent:"flex-end"}} onClick={onClose}>
+      <div style={{width:"min(820px,95vw)",background:C.bg,borderLeft:`1px solid ${C.border}`,display:"flex",flexDirection:"column",overflow:"hidden"}} onClick={e=>e.stopPropagation()}>
+
+        {/* Header */}
+        <div style={{padding:"18px 26px",borderBottom:`1px solid ${C.border}`,display:"flex",justifyContent:"space-between",alignItems:"center",flexShrink:0,background:C.surface}}>
+          <div>
+            <h2 style={{fontFamily:"'Playfair Display',serif",fontSize:20,fontWeight:700,lineHeight:1}}>Importar <span style={{color:C.amber}}>OFX / Extrato</span></h2>
+            <p style={{fontSize:11,color:C.muted,fontFamily:"'DM Mono',monospace",marginTop:4}}>Banco do Brasil · revise antes de salvar</p>
+          </div>
+          <button onClick={onClose} style={{background:C.border,border:"none",color:C.muted,borderRadius:10,padding:"7px 13px",cursor:"pointer",fontSize:18,lineHeight:1}}>✕</button>
+        </div>
+
+        {/* Etapa: upload */}
+        {etapa==="upload"&&(
+          <div style={{flex:1,display:"flex",alignItems:"center",justifyContent:"center",padding:40}}>
+            <div
+              onDrop={onDrop} onDragOver={e=>e.preventDefault()}
+              onClick={()=>inputRef.current?.click()}
+              style={{border:`2px dashed ${C.amber}55`,borderRadius:20,padding:"60px 40px",textAlign:"center",cursor:"pointer",transition:"all .2s",width:"100%",maxWidth:440}}
+            >
+              <div style={{fontSize:48,marginBottom:16}}>📂</div>
+              <p style={{fontFamily:"'Playfair Display',serif",fontSize:20,marginBottom:10}}>Arraste o arquivo OFX aqui</p>
+              <p style={{fontSize:13,color:C.muted,fontFamily:"'DM Mono',monospace",marginBottom:20}}>ou clique para selecionar</p>
+              <p style={{fontSize:11,color:C.muted2,fontFamily:"'DM Mono',monospace"}}>Suportado: .ofx · Banco do Brasil e outros</p>
+              <input ref={inputRef} type="file" accept=".ofx,.OFX" style={{display:"none"}} onChange={onDrop}/>
+            </div>
+          </div>
+        )}
+
+        {/* Etapa: revisar */}
+        {etapa==="revisar"&&(
+          <>
+            {/* Resumo */}
+            <div style={{flexShrink:0,padding:"14px 26px",background:C.surface2,borderBottom:`1px solid ${C.border}`,display:"flex",gap:20,alignItems:"center",flexWrap:"wrap"}}>
+              <div style={{display:"flex",gap:16}}>
+                <div><span style={{fontSize:11,color:C.muted,fontFamily:"'DM Mono',monospace"}}>SELECIONADOS </span><span style={{fontSize:14,color:C.white,fontFamily:"'DM Mono',monospace",fontWeight:700}}>{qtdSel} itens</span></div>
+                <div><span style={{fontSize:11,color:C.muted,fontFamily:"'DM Mono',monospace"}}>ENTRADAS </span><span style={{fontSize:14,color:C.amber,fontFamily:"'DM Mono',monospace",fontWeight:700}}>{fBRL(totalESel)}</span></div>
+                <div><span style={{fontSize:11,color:C.muted,fontFamily:"'DM Mono',monospace"}}>GASTOS </span><span style={{fontSize:14,color:C.white,fontFamily:"'DM Mono',monospace",fontWeight:700}}>{fBRL(totalGSel)}</span></div>
+              </div>
+              <div style={{marginLeft:"auto",display:"flex",gap:8}}>
+                <button onClick={()=>setEtapa("upload")} style={{background:"transparent",border:`1px solid ${C.border2}`,color:C.muted,padding:"7px 16px",borderRadius:9,cursor:"pointer",fontSize:13,fontFamily:"'DM Mono',monospace"}}>← Voltar</button>
+                <button onClick={salvar} disabled={qtdSel===0} style={{background:qtdSel>0?C.amber:"#333",color:C.bg,fontWeight:700,padding:"8px 22px",borderRadius:10,border:"none",cursor:qtdSel>0?"pointer":"not-allowed",fontSize:13,whiteSpace:"nowrap"}}>
+                  Salvar {qtdSel} lançamento{qtdSel!==1?"s":""}
+                </button>
+              </div>
+            </div>
+
+            <div style={{flex:1,overflowY:"auto",padding:"0 26px 24px"}}>
+              {/* Entradas */}
+              {entradasP.length>0&&(
+                <div style={{marginTop:20}}>
+                  <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:12}}>
+                    <span style={{fontSize:13,color:C.amber,fontFamily:"'DM Mono',monospace",fontWeight:700,textTransform:"uppercase",letterSpacing:"0.1em"}}>💰 Entradas ({entradasP.length})</span>
+                    <button onClick={()=>toggleTodos("entrada")} style={{fontSize:11,color:C.muted,background:"transparent",border:`1px solid ${C.border2}`,borderRadius:6,padding:"2px 8px",cursor:"pointer",fontFamily:"'DM Mono',monospace"}}>
+                      {entradasP.every(i=>selecionados[i.id])?"Desmarcar todas":"Marcar todas"}
+                    </button>
+                  </div>
+                  {entradasP.map(item=>(
+                    <ItemRevisao key={item.id} item={item} sel={selecionados[item.id]} onToggle={()=>toggleItem(item.id)} onUpdate={(c,v)=>atualizarItem(item.id,c,v)} tipo="entrada"/>
+                  ))}
+                </div>
+              )}
+              {/* Gastos */}
+              {gastosP.length>0&&(
+                <div style={{marginTop:20}}>
+                  <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:12}}>
+                    <span style={{fontSize:13,color:C.white,fontFamily:"'DM Mono',monospace",fontWeight:700,textTransform:"uppercase",letterSpacing:"0.1em"}}>💸 Gastos ({gastosP.length})</span>
+                    <button onClick={()=>toggleTodos("gasto")} style={{fontSize:11,color:C.muted,background:"transparent",border:`1px solid ${C.border2}`,borderRadius:6,padding:"2px 8px",cursor:"pointer",fontFamily:"'DM Mono',monospace"}}>
+                      {gastosP.every(i=>selecionados[i.id])?"Desmarcar todos":"Marcar todos"}
+                    </button>
+                  </div>
+                  {gastosP.map(item=>(
+                    <ItemRevisao key={item.id} item={item} sel={selecionados[item.id]} onToggle={()=>toggleItem(item.id)} onUpdate={(c,v)=>atualizarItem(item.id,c,v)} tipo="gasto"/>
+                  ))}
+                </div>
+              )}
+            </div>
+          </>
+        )}
+
+        {/* Etapa: salvando */}
+        {etapa==="salvando"&&(
+          <div style={{flex:1,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",gap:20,padding:40}}>
+            <div style={{fontSize:40}}>⏳</div>
+            <p style={{fontFamily:"'Playfair Display',serif",fontSize:20}}>Salvando lançamentos...</p>
+            <div style={{width:300,background:C.border,borderRadius:99,height:10}}>
+              <div style={{width:`${progresso}%`,background:C.amber,height:"100%",borderRadius:99,transition:"width .3s"}}/>
+            </div>
+            <p style={{fontSize:13,color:C.muted,fontFamily:"'DM Mono',monospace"}}>{progresso}% concluído</p>
+          </div>
+        )}
+
+        {/* Etapa: concluido */}
+        {etapa==="concluido"&&(
+          <div style={{flex:1,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",gap:20,padding:40,textAlign:"center"}}>
+            <div style={{fontSize:56}}>✅</div>
+            <p style={{fontFamily:"'Playfair Display',serif",fontSize:24,color:C.amber}}>Importação concluída!</p>
+            <p style={{fontSize:14,color:C.muted,fontFamily:"'DM Mono',monospace"}}>{qtdSel} lançamentos salvos no Firebase</p>
+            <p style={{fontSize:13,color:C.muted2,fontFamily:"'DM Mono',monospace"}}>O app já foi atualizado em tempo real.</p>
+            <button onClick={onClose} style={{background:C.amber,color:C.bg,fontWeight:700,padding:"12px 32px",borderRadius:12,border:"none",cursor:"pointer",fontSize:15,marginTop:10}}>Fechar e ver no app</button>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function ItemRevisao({item,sel,onToggle,onUpdate,tipo}){
+  const cats=tipo==="gasto"?CATS_GASTO:CATS_ENTRADA;
+  const corBorda=sel?(tipo==="entrada"?C.amber+"44":C.border2):C.border;
+  return(
+    <div style={{display:"grid",gridTemplateColumns:"28px 1fr 110px 120px 90px",gap:10,padding:"10px 14px",marginBottom:6,background:sel?C.surface:C.surface2,border:`1px solid ${corBorda}`,borderRadius:12,alignItems:"center",opacity:sel?1:0.45,transition:"all .15s"}}>
+      <input type="checkbox" checked={!!sel} onChange={onToggle} style={{width:16,height:16,cursor:"pointer",accentColor:C.amber}}/>
+      <div style={{minWidth:0}}>
+        <input value={item.descricao} onChange={e=>onUpdate("descricao",e.target.value)}
+          style={{background:"transparent",border:"none",color:C.text,fontSize:13,width:"100%",fontFamily:"inherit",outline:"none",borderBottom:`1px solid ${C.border2}`,paddingBottom:2}}/>
+        <p style={{fontSize:10,color:C.muted2,fontFamily:"'DM Mono',monospace",marginTop:3,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{item.data.split("-").reverse().join("/")} · {item.nome}</p>
+      </div>
+      <select value={item.cat} onChange={e=>onUpdate("cat",e.target.value)}
+        style={{background:C.border,border:`1px solid ${C.border2}`,borderRadius:8,padding:"5px 8px",color:C.text,fontSize:11,fontFamily:"'DM Mono',monospace",cursor:"pointer"}}>
+        {cats.map(c=><option key={c.nome} value={c.nome}>{c.emoji} {c.nome}</option>)}
+      </select>
+      <input type="date" value={item.data} onChange={e=>onUpdate("data",e.target.value)}
+        style={{background:C.border,border:`1px solid ${C.border2}`,borderRadius:8,padding:"5px 8px",color:C.text,fontSize:11,fontFamily:"'DM Mono',monospace"}}/>
+      <span style={{fontSize:13,fontWeight:700,color:tipo==="entrada"?C.amber:C.white,fontFamily:"'DM Mono',monospace",textAlign:"right",whiteSpace:"nowrap"}}>{fBRL(item.valor)}</span>
+    </div>
+  );
+}
+
+// ── ItemLancamento com edição inline ─────────────────────
+function ItemLancamento({item,tipo,onDel,onUpdate}){
+  const [aberto,setAberto]=useState(false);
+  const [form,setForm]=useState({descricao:item.descricao,valor:String(item.valor),categoria:item.categoria,data:item.data});
+  const cats=tipo==="gasto"?CATS_GASTO:CATS_ENTRADA;
+  const cat=cats.find(c=>c.nome===item.categoria)||cats[cats.length-1];
+  const corValor=tipo==="entrada"?C.amber:C.white;
+  const corCat=tipo==="entrada"?{background:C.amberLo,color:C.amber}:{background:C.border2,color:C.muted};
+
+  const salvar=async()=>{
+    const v=parseFloat(form.valor.replace(",","."));
+    if(isNaN(v)||v<=0) return;
+    await onUpdate({descricao:form.descricao,valor:v,categoria:form.categoria,data:form.data});
+    setAberto(false);
+  };
+
+  return(
+    <div style={{borderBottom:`1px solid ${C.border}22`,marginBottom:2}}>
+      {/* Linha normal */}
+      <div onClick={()=>setAberto(a=>!a)} className="row-t"
+        style={{display:"grid",gridTemplateColumns:"22px 1fr auto 20px",gap:6,padding:"9px 4px",alignItems:"center",cursor:"pointer",borderRadius:8,transition:"background .15s",background:aberto?C.surface2:"transparent"}}>
+        <span style={{fontSize:13,flexShrink:0}}>{cat.emoji}</span>
+        <div style={{minWidth:0}}>
+          <p style={{fontSize:12,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{item.descricao}</p>
+          <p style={{fontSize:10,color:C.muted,fontFamily:"'DM Mono',monospace",marginTop:1}}>{toDate(item.data).toLocaleDateString("pt-BR")} · <span style={{...corCat,padding:"1px 5px",borderRadius:8,fontSize:9}}>{item.categoria}</span></p>
+        </div>
+        <span style={{fontSize:12,color:corValor,fontFamily:"'DM Mono',monospace",fontWeight:700,whiteSpace:"nowrap"}}>{fBRL(item.valor)}</span>
+        <span style={{fontSize:12,color:C.muted,transition:"transform .2s",display:"inline-block",transform:aberto?"rotate(180deg)":"rotate(0deg)"}}>▾</span>
+      </div>
+
+      {/* Edição inline */}
+      {aberto&&(
+        <div style={{background:C.surface2,border:`1px solid ${C.border2}`,borderRadius:10,padding:"12px 14px",marginBottom:8}}>
+          <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8,marginBottom:8}}>
+            <div>
+              <p style={{fontSize:10,color:C.muted,fontFamily:"'DM Mono',monospace",marginBottom:4}}>DESCRIÇÃO</p>
+              <input className="inp" value={form.descricao} onChange={e=>setForm(f=>({...f,descricao:e.target.value}))} style={{fontSize:12,padding:"7px 10px"}}/>
+            </div>
+            <div>
+              <p style={{fontSize:10,color:C.muted,fontFamily:"'DM Mono',monospace",marginBottom:4}}>VALOR (R$)</p>
+              <input className="inp" value={form.valor} onChange={e=>setForm(f=>({...f,valor:e.target.value}))} style={{fontSize:12,padding:"7px 10px"}}/>
+            </div>
+            <div>
+              <p style={{fontSize:10,color:C.muted,fontFamily:"'DM Mono',monospace",marginBottom:4}}>CATEGORIA</p>
+              <select className="inp" value={form.categoria} onChange={e=>setForm(f=>({...f,categoria:e.target.value}))} style={{fontSize:12,padding:"7px 10px"}}>
+                {cats.map(c=><option key={c.nome} value={c.nome}>{c.emoji} {c.nome}</option>)}
+              </select>
+            </div>
+            <div>
+              <p style={{fontSize:10,color:C.muted,fontFamily:"'DM Mono',monospace",marginBottom:4}}>DATA</p>
+              <input type="date" className="inp" value={form.data} onChange={e=>setForm(f=>({...f,data:e.target.value}))} style={{fontSize:12,padding:"7px 10px"}}/>
+            </div>
+          </div>
+          <div style={{display:"flex",gap:8,justifyContent:"flex-end"}}>
+            <button onClick={()=>onDel()} style={{background:"transparent",border:`1px solid ${C.danger}44`,color:C.danger,padding:"6px 14px",borderRadius:8,cursor:"pointer",fontSize:12,fontFamily:"'DM Mono',monospace"}}>🗑 Excluir</button>
+            <button onClick={()=>setAberto(false)} style={{background:"transparent",border:`1px solid ${C.border2}`,color:C.muted,padding:"6px 14px",borderRadius:8,cursor:"pointer",fontSize:12,fontFamily:"'DM Mono',monospace"}}>Cancelar</button>
+            <button onClick={salvar} style={{background:tipo==="entrada"?C.amber:C.white,color:C.bg,fontWeight:700,padding:"6px 16px",borderRadius:8,border:"none",cursor:"pointer",fontSize:12}}>Salvar</button>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
 
 function useIsMobile(){
   const [m,setM]=useState(window.innerWidth<768);
@@ -567,6 +887,7 @@ function MobileApp({gastos,entradas,carregando,onAddGasto,onAddEntrada,onDelGast
   const [modal,setModal]=useState(null);
   const [aba,setAba]=useState("resumo");
   const [showPeriodo,setShowPeriodo]=useState(false);
+  const [showImport,setShowImport]=useState(false);
 
   const gastosMes  =useMemo(()=>gastos.filter(g=>{const d=toDate(g.data);return d.getMonth()===mes&&d.getFullYear()===ano;}),[gastos,mes,ano]);
   const entradasMes=useMemo(()=>entradas.filter(e=>{const d=toDate(e.data);return d.getMonth()===mes&&d.getFullYear()===ano;}),[entradas,mes,ano]);
@@ -587,6 +908,7 @@ function MobileApp({gastos,entradas,carregando,onAddGasto,onAddEntrada,onDelGast
         </div>
         <div style={{display:"flex",alignItems:"center",gap:8}}>
           <button onClick={()=>setShowPeriodo(true)} style={{background:C.surface,border:`1px solid ${C.border}`,color:C.amber,borderRadius:9,padding:"7px 12px",cursor:"pointer",fontSize:12,fontFamily:"'DM Mono',monospace"}}>📊 Análise</button>
+          <button onClick={()=>setShowImport(true)} style={{background:"transparent",border:`1px solid ${C.border2}`,color:C.muted,fontWeight:600,padding:"7px 16px",borderRadius:9,fontSize:13,cursor:"pointer",whiteSpace:"nowrap",fontFamily:"'DM Mono',monospace"}}>📥 Importar OFX</button>
           <div style={{width:7,height:7,borderRadius:"50%",background:carregando?C.warn:C.amber,boxShadow:`0 0 8px ${carregando?C.warn:C.amber}`}}/>
         </div>
       </div>
@@ -695,6 +1017,7 @@ function MobileApp({gastos,entradas,carregando,onAddGasto,onAddEntrada,onDelGast
       </div>
       {modal&&<Modal tipo={modal} onClose={()=>setModal(null)} onSave={async(d)=>{if(modal==="gasto")await onAddGasto(d);else await onAddEntrada(d);setModal(null);}}/>}
       {showPeriodo&&<PainelPeriodo gastos={gastos} entradas={entradas} onClose={()=>setShowPeriodo(false)}/>}
+      {showImport&&<PainelImportOFX onClose={()=>setShowImport(false)} onSalvar={async(tipo,d)=>{if(tipo==="gasto")await onAddGasto(d);else await onAddEntrada(d);}}/>}
     </div>
   );
 }
@@ -704,13 +1027,14 @@ function MobileApp({gastos,entradas,carregando,onAddGasto,onAddEntrada,onDelGast
 // ══════════════════════════════════════════════════════════
 const lbl={fontSize:11,color:"#505050",fontFamily:"'DM Mono',monospace",textTransform:"uppercase",letterSpacing:"0.08em",display:"block",marginBottom:7};
 
-function DesktopApp({gastos,entradas,carregando,onAddGasto,onAddEntrada,onDelGasto,onDelEntrada}){
+function DesktopApp({gastos,entradas,carregando,onAddGasto,onAddEntrada,onDelGasto,onDelEntrada,onUpdateGasto,onUpdateEntrada}){
   const hoje=new Date();
   const [mes,setMes]=useState(hoje.getMonth());
   const [ano,setAno]=useState(hoje.getFullYear());
   const [abaForm,setAbaForm]=useState("gasto");
   const [showForm,setShowForm]=useState(false);
   const [showPeriodo,setShowPeriodo]=useState(false);
+  const [showImport,setShowImport]=useState(false);
   const [formG,setFormG]=useState({descricao:"",valor:"",categoria:"Alimentação",data:today()});
   const [formE,setFormE]=useState({descricao:"Salário",valor:"",categoria:"Salário",data:today()});
 
@@ -760,6 +1084,7 @@ function DesktopApp({gastos,entradas,carregando,onAddGasto,onAddEntrada,onDelGas
           <button onClick={()=>mudar(1)} style={{background:C.bg,border:`1px solid ${C.border}`,color:C.muted,borderRadius:9,padding:"7px 14px",cursor:"pointer",fontSize:15,lineHeight:1}}>→</button>
           <div style={{width:1,height:20,background:C.border}}/>
           <button onClick={()=>setShowPeriodo(true)} style={{background:"transparent",border:`1px solid ${C.amber}55`,color:C.amber,fontWeight:600,padding:"7px 16px",borderRadius:9,fontSize:13,cursor:"pointer",whiteSpace:"nowrap",fontFamily:"'DM Mono',monospace"}}>📊 Análise</button>
+          <button onClick={()=>setShowImport(true)} style={{background:"transparent",border:`1px solid ${C.border2}`,color:C.muted,fontWeight:600,padding:"7px 16px",borderRadius:9,fontSize:13,cursor:"pointer",whiteSpace:"nowrap",fontFamily:"'DM Mono',monospace"}}>📥 OFX</button>
           <div style={{width:1,height:20,background:C.border}}/>
           <button onClick={()=>{setAbaForm("gasto");setShowForm(abaForm==="gasto"?!showForm:true);}} style={{background:showForm&&abaForm==="gasto"?C.border2:C.white,color:C.bg,fontWeight:700,padding:"8px 18px",borderRadius:10,border:"none",fontSize:13,cursor:"pointer",transition:"all .2s",whiteSpace:"nowrap"}}>
             {showForm&&abaForm==="gasto"?"✕ Fechar":"− Gasto"}
@@ -866,48 +1191,41 @@ function DesktopApp({gastos,entradas,carregando,onAddGasto,onAddEntrada,onDelGas
             </Card>
           </div>
 
-          {/* Col 2: lançamentos */}
-          <Card style={{padding:"18px 20px",display:"flex",flexDirection:"column",minHeight:0,overflow:"hidden"}}>
-            <p style={{fontFamily:"'Playfair Display',serif",fontSize:17,marginBottom:14,flexShrink:0}}>Lançamentos de {MESES[mes]}</p>
-            <div style={{display:"grid",gridTemplateColumns:"2fr 1fr 1fr 88px 24px",gap:6,padding:"0 0 8px",borderBottom:`1px solid ${C.border}`,flexShrink:0}}>
-              {["Descrição","Categoria","Data","Valor",""].map((h,i)=>(
-                <span key={i} style={{fontSize:10,color:C.muted2,fontFamily:"'DM Mono',monospace",textTransform:"uppercase",letterSpacing:"0.07em"}}>{h}</span>
-              ))}
-            </div>
-            <div style={{flex:1,overflowY:"auto",marginTop:4}}>
-              {carregando&&<p style={{color:C.muted,fontSize:13,textAlign:"center",padding:"20px 0"}}>Carregando...</p>}
-              {[...gastosMes].sort((a,b)=>new Date(b.data)-new Date(a.data)).map(g=>{
-                const cat=CATS_GASTO.find(c=>c.nome===g.categoria)||CATS_GASTO[6];
-                return(
-                  <div key={g.id} className="row-t" style={{display:"grid",gridTemplateColumns:"2fr 1fr 1fr 88px 24px",gap:6,padding:"10px 0",borderBottom:`1px solid ${C.border}18`,alignItems:"center"}}>
-                    <div style={{display:"flex",alignItems:"center",gap:7,minWidth:0}}><span style={{fontSize:14,flexShrink:0}}>{cat.emoji}</span><span style={{fontSize:13,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{g.descricao}</span></div>
-                    <span style={{padding:"2px 8px",borderRadius:20,fontSize:10,background:C.border2,color:C.muted,fontFamily:"'DM Mono',monospace",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",display:"block"}}>{g.categoria}</span>
-                    <span style={{fontSize:11,color:C.muted,fontFamily:"'DM Mono',monospace"}}>{toDate(g.data).toLocaleDateString("pt-BR")}</span>
-                    <span style={{fontSize:13,color:C.white,fontFamily:"'DM Mono',monospace",textAlign:"right",whiteSpace:"nowrap"}}>{fBRL(g.valor)}</span>
-                    <button onClick={()=>onDelGasto(g.id)} className="del" style={{opacity:0,background:"transparent",border:"none",color:C.danger,fontSize:16,cursor:"pointer",transition:"opacity .2s"}}>×</button>
-                  </div>
-                );
-              })}
-              {entradasMes.length>0&&(
-                <>
-                  <div style={{padding:"12px 0 6px"}}><span style={{fontSize:10,color:C.amber,fontFamily:"'DM Mono',monospace",textTransform:"uppercase",letterSpacing:"0.1em"}}>entradas</span></div>
-                  {[...entradasMes].sort((a,b)=>new Date(b.data)-new Date(a.data)).map(e=>{
-                    const cat=CATS_ENTRADA.find(c=>c.nome===e.categoria)||CATS_ENTRADA[4];
-                    return(
-                      <div key={e.id} className="row-t" style={{display:"grid",gridTemplateColumns:"2fr 1fr 1fr 88px 24px",gap:6,padding:"10px 0",borderBottom:`1px solid ${C.border}18`,alignItems:"center"}}>
-                        <div style={{display:"flex",alignItems:"center",gap:7,minWidth:0}}><span style={{fontSize:14,flexShrink:0}}>{cat.emoji}</span><span style={{fontSize:13,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{e.descricao}</span></div>
-                        <span style={{padding:"2px 8px",borderRadius:20,fontSize:10,background:C.amberLo,color:C.amber,fontFamily:"'DM Mono',monospace",display:"block"}}>{e.categoria}</span>
-                        <span style={{fontSize:11,color:C.muted,fontFamily:"'DM Mono',monospace"}}>{toDate(e.data).toLocaleDateString("pt-BR")}</span>
-                        <span style={{fontSize:13,color:C.amber,fontFamily:"'DM Mono',monospace",textAlign:"right",whiteSpace:"nowrap"}}>{fBRL(e.valor)}</span>
-                        <button onClick={()=>onDelEntrada(e.id)} className="del" style={{opacity:0,background:"transparent",border:"none",color:C.danger,fontSize:16,cursor:"pointer",transition:"opacity .2s"}}>×</button>
-                      </div>
-                    );
-                  })}
-                </>
-              )}
-              {gastosMes.length===0&&entradasMes.length===0&&!carregando&&<p style={{color:C.muted,fontSize:13,textAlign:"center",padding:"20px 0"}}>Nenhum lançamento este mês</p>}
-            </div>
-          </Card>
+          {/* Col 2: lançamentos lado a lado */}
+          <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12,minHeight:0,overflow:"hidden"}}>
+            {/* Gastos */}
+            <Card style={{padding:"16px 18px",display:"flex",flexDirection:"column",minHeight:0,overflow:"hidden"}}>
+              <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:12,flexShrink:0}}>
+                <p style={{fontFamily:"'Playfair Display',serif",fontSize:15}}>💸 Gastos <span style={{fontSize:11,color:C.muted,fontFamily:"'DM Mono',monospace"}}>({gastosMes.length})</span></p>
+                <span style={{fontSize:12,color:C.white,fontFamily:"'DM Mono',monospace",fontWeight:700}}>{fBRL(totalG)}</span>
+              </div>
+              <div style={{flex:1,overflowY:"auto"}}>
+                {carregando&&<p style={{color:C.muted,fontSize:12,textAlign:"center",padding:"16px 0"}}>Carregando...</p>}
+                {gastosMes.length===0&&!carregando&&<p style={{color:C.muted,fontSize:12,textAlign:"center",padding:"16px 0"}}>Nenhum gasto este mês</p>}
+                {[...gastosMes].sort((a,b)=>new Date(b.data)-new Date(a.data)).map(g=>(
+                  <ItemLancamento key={g.id} item={g} tipo="gasto"
+                    onDel={()=>onDelGasto(g.id)}
+                    onUpdate={(d)=>onUpdateGasto(g.id,d)}/>
+                ))}
+              </div>
+            </Card>
+            {/* Entradas */}
+            <Card style={{padding:"16px 18px",display:"flex",flexDirection:"column",minHeight:0,overflow:"hidden"}}>
+              <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:12,flexShrink:0}}>
+                <p style={{fontFamily:"'Playfair Display',serif",fontSize:15}}>💰 Entradas <span style={{fontSize:11,color:C.muted,fontFamily:"'DM Mono',monospace"}}>({entradasMes.length})</span></p>
+                <span style={{fontSize:12,color:C.amber,fontFamily:"'DM Mono',monospace",fontWeight:700}}>{fBRL(totalE)}</span>
+              </div>
+              <div style={{flex:1,overflowY:"auto"}}>
+                {carregando&&<p style={{color:C.muted,fontSize:12,textAlign:"center",padding:"16px 0"}}>Carregando...</p>}
+                {entradasMes.length===0&&!carregando&&<p style={{color:C.muted,fontSize:12,textAlign:"center",padding:"16px 0"}}>Nenhuma entrada este mês</p>}
+                {[...entradasMes].sort((a,b)=>new Date(b.data)-new Date(a.data)).map(e=>(
+                  <ItemLancamento key={e.id} item={e} tipo="entrada"
+                    onDel={()=>onDelEntrada(e.id)}
+                    onUpdate={(d)=>onUpdateEntrada(e.id,d)}/>
+                ))}
+              </div>
+            </Card>
+          </div>
 
           {/* Col 3 */}
           <PainelSaude pct={pctReal} saldo={saldo} gastosMes={gastosMes} renda={totalE}/>
@@ -915,6 +1233,7 @@ function DesktopApp({gastos,entradas,carregando,onAddGasto,onAddEntrada,onDelGas
       </div>
 
       {showPeriodo&&<PainelPeriodo gastos={gastos} entradas={entradas} onClose={()=>setShowPeriodo(false)}/>}
+      {showImport&&<PainelImportOFX onClose={()=>setShowImport(false)} onSalvar={async(tipo,d)=>{if(tipo==="gasto")await onAddGasto(d);else await onAddEntrada(d);}}/>}
     </div>
   );
 }
@@ -939,7 +1258,9 @@ export default function App(){
   const onAddEntrada =(d)=>addDoc(collection(db,"entradas"),d);
   const onDelGasto   =(id)=>deleteDoc(doc(db,"gastos",  id));
   const onDelEntrada =(id)=>deleteDoc(doc(db,"entradas",id));
-  const props={gastos,entradas,carregando,onAddGasto,onAddEntrada,onDelGasto,onDelEntrada};
+  const onUpdateGasto  =(id,d)=>updateDoc(doc(db,"gastos",  id),d);
+  const onUpdateEntrada=(id,d)=>updateDoc(doc(db,"entradas",id),d);
+  const props={gastos,entradas,carregando,onAddGasto,onAddEntrada,onDelGasto,onDelEntrada,onUpdateGasto,onUpdateEntrada};
 
   return(
     <>
