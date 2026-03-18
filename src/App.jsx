@@ -19,7 +19,7 @@ const C = {
   amber:"#f59e0b",amberLo:"#f59e0b1a",amberMid:"#f59e0b44",
   warn:"#fb923c",danger:"#ef4444",white:"#ffffff",
 };
-const CATS_GASTO   = [{nome:"Alimentação",emoji:"🍽️"},{nome:"Transporte",emoji:"🚌"},{nome:"Lazer",emoji:"🎮"},{nome:"Saúde",emoji:"💊"},{nome:"Moradia",emoji:"🏠"},{nome:"Educação",emoji:"📚"},{nome:"Outros",emoji:"📦"}];
+const CATS_GASTO   = [{nome:"Alimentação",emoji:"🍽️"},{nome:"Transporte",emoji:"🚌"},{nome:"Lazer",emoji:"🎮"},{nome:"Saúde",emoji:"💊"},{nome:"Moradia",emoji:"🏠"},{nome:"Educação",emoji:"📚"},{nome:"Família",emoji:"👨‍👩‍👧"},{nome:"Contas",emoji:"📄"},{nome:"Empréstimo/Cartão",emoji:"💳"},{nome:"E-commerce",emoji:"🛒"},{nome:"Outros",emoji:"📦"}];
 const CATS_ENTRADA = [{nome:"Salário",emoji:"💼"},{nome:"Freelance",emoji:"💻"},{nome:"Investimento",emoji:"📈"},{nome:"Presente",emoji:"🎁"},{nome:"Outros",emoji:"📦"}];
 const MESES = ["Janeiro","Fevereiro","Março","Abril","Maio","Junho","Julho","Agosto","Setembro","Outubro","Novembro","Dezembro"];
 const MS    = ["Jan","Fev","Mar","Abr","Mai","Jun","Jul","Ago","Set","Out","Nov","Dez"];
@@ -73,11 +73,13 @@ function sugerirCategoria(nome, memo, tipo) {
   if(t.includes("SUPERMERCADO")||t.includes("MERCADO")||t.includes("ACAI")||t.includes("AÇAÍ")||t.includes("PIZZA")||t.includes("HAMBURGU")||t.includes("BURGER")||t.includes("RESTAUR")||t.includes("LANCH")||t.includes("PADARIA")||t.includes("ASSAI")||t.includes("ATACAD")||t.includes("LAGOA")) return{col:"gasto",cat:"Alimentação"};
   if(t.includes("UBER")||t.includes("POSTO")||t.includes("COMBUSTIVEL")||t.includes("COMBUSTÍVEL")||t.includes("ONIBUS")||t.includes("ÔNIBUS")||t.includes("TAXI")||t.includes("99POP")||t.includes("TRANSPORT")) return{col:"gasto",cat:"Transporte"};
   if(t.includes("FARMACIA")||t.includes("FARMÁCIA")||t.includes("FARMA")||t.includes("DROGARIA")||t.includes("MEDICO")||t.includes("MÉDICO")||t.includes("HOSPITAL")||t.includes("CLINICA")||t.includes("CLÍNICA")) return{col:"gasto",cat:"Saúde"};
-  if(t.includes("BRISANET")||t.includes("INTERNET")||t.includes("CLARO")||t.includes("VIVO")||t.includes("TIM")||t.includes("OI")||t.includes("TELEFO")||t.includes("PRE-PAGO")||t.includes("GLOBO")) return{col:"gasto",cat:"Moradia"};
-  if(t.includes("BOLETO")||t.includes("AGUA")||t.includes("ÁGUA")||t.includes("LUZ")||t.includes("ENERGIA")||t.includes("ALUGUEL")||t.includes("CONDOM")) return{col:"gasto",cat:"Moradia"};
+  if(t.includes("BRISANET")||t.includes("INTERNET")||t.includes("CLARO")||t.includes("VIVO")||t.includes("TIM")||t.includes("OI")||t.includes("TELEFO")||t.includes("PRE-PAGO")||t.includes("GLOBO")) return{col:"gasto",cat:"Contas"};
+  if(t.includes("BOLETO")||t.includes("AGUA")||t.includes("ÁGUA")||t.includes("LUZ")||t.includes("ENERGIA")||t.includes("ALUGUEL")||t.includes("CONDOM")) return{col:"gasto",cat:"Contas"};
   if(t.includes("ESCOLA")||t.includes("FACUL")||t.includes("CURSO")||t.includes("LIVRO")||t.includes("EDUCAC")||t.includes("EDUCAÇ")) return{col:"gasto",cat:"Educação"};
-  if(t.includes("CINEMA")||t.includes("THEATER")||t.includes("SHOW")||t.includes("JOGO")||t.includes("SPOTIFY")||t.includes("NETFLIX")||t.includes("AMAZON")) return{col:"gasto",cat:"Lazer"};
-  if(t.includes("TARIFA")||t.includes("IOF")||t.includes("ANUIDADE")) return{col:"gasto",cat:"Outros"};
+  if(t.includes("CINEMA")||t.includes("THEATER")||t.includes("SHOW")||t.includes("JOGO")||t.includes("SPOTIFY")||t.includes("NETFLIX")||t.includes("AMAZON")||t.includes("PRIME")) return{col:"gasto",cat:"Lazer"};
+  if(t.includes("BANCO PAN")||t.includes("EMPRESTIMO")||t.includes("EMPRÉSTIMO")||t.includes("FINANC")||t.includes("PARCELA")||t.includes("FATURA")||t.includes("CREDITO")||t.includes("CRÉDITO")) return{col:"gasto",cat:"Empréstimo/Cartão"};
+  if(t.includes("SHOPEE")||t.includes("MERCADO LIVRE")||t.includes("MERCADOLIVRE")||t.includes("AMAZON")||t.includes("ALIEXPRESS")||t.includes("MAGALU")||t.includes("AMERICANAS")||t.includes("MARKETPLACE")||t.includes("PIX Marketplace")) return{col:"gasto",cat:"E-commerce"};
+  if(t.includes("TARIFA")||t.includes("IOF")||t.includes("ANUIDADE")) return{col:"gasto",cat:"Contas"};
   return{col:"gasto",cat:"Outros"};
 }
 
