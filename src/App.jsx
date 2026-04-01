@@ -1,6 +1,6 @@
 import { useState, useMemo, useEffect, useRef } from "react";
 import { initializeApp } from "firebase/app";
-import { getFirestore, collection, addDoc, deleteDoc, doc, onSnapshot } from "firebase/firestore";
+import { getFirestore, collection, addDoc, deleteDoc, doc, onSnapshot, updateDoc, getDocs } from "firebase/firestore";
 
 const firebaseConfig = {
   apiKey: "AIzaSyDQhBVBogW5ww9b8bGRf9sDTLy0HLH2xAo",
@@ -15,11 +15,11 @@ const db = getFirestore(firebaseApp);
 
 const C = {
   bg:"#080808",surface:"#101010",surface2:"#141414",border:"#1f1f1f",border2:"#282828",
-  text:"#f2f2f2",muted:"#606060",muted2:"#383838",
+  text:"#f2f2f2",muted:"#888888",muted2:"#505050",
   amber:"#f59e0b",amberLo:"#f59e0b1a",amberMid:"#f59e0b44",
   warn:"#fb923c",danger:"#ef4444",white:"#ffffff",
 };
-const CATS_GASTO   = [{nome:"Alimentação",emoji:"🍽️"},{nome:"Transporte",emoji:"🚌"},{nome:"Lazer",emoji:"🎮"},{nome:"Saúde",emoji:"💊"},{nome:"Moradia",emoji:"🏠"},{nome:"Educação",emoji:"📚"},{nome:"Outros",emoji:"📦"}];
+const CATS_GASTO   = [{nome:"Alimentação",emoji:"🍽️"},{nome:"Transporte",emoji:"🚌"},{nome:"Lazer",emoji:"🎮"},{nome:"Saúde",emoji:"💊"},{nome:"Moradia",emoji:"🏠"},{nome:"Educação",emoji:"📚"},{nome:"Família",emoji:"👨‍👩‍👧"},{nome:"Contas",emoji:"📄"},{nome:"Empréstimo/Cartão",emoji:"💳"},{nome:"E-commerce",emoji:"🛒"},{nome:"Outros",emoji:"📦"}];
 const CATS_ENTRADA = [{nome:"Salário",emoji:"💼"},{nome:"Freelance",emoji:"💻"},{nome:"Investimento",emoji:"📈"},{nome:"Presente",emoji:"🎁"},{nome:"Outros",emoji:"📦"}];
 const MESES = ["Janeiro","Fevereiro","Março","Abril","Maio","Junho","Julho","Agosto","Setembro","Outubro","Novembro","Dezembro"];
 const MS    = ["Jan","Fev","Mar","Abr","Mai","Jun","Jul","Ago","Set","Out","Nov","Dez"];
@@ -73,11 +73,13 @@ function sugerirCategoria(nome, memo, tipo) {
   if(t.includes("SUPERMERCADO")||t.includes("MERCADO")||t.includes("ACAI")||t.includes("AÇAÍ")||t.includes("PIZZA")||t.includes("HAMBURGU")||t.includes("BURGER")||t.includes("RESTAUR")||t.includes("LANCH")||t.includes("PADARIA")||t.includes("ASSAI")||t.includes("ATACAD")||t.includes("LAGOA")) return{col:"gasto",cat:"Alimentação"};
   if(t.includes("UBER")||t.includes("POSTO")||t.includes("COMBUSTIVEL")||t.includes("COMBUSTÍVEL")||t.includes("ONIBUS")||t.includes("ÔNIBUS")||t.includes("TAXI")||t.includes("99POP")||t.includes("TRANSPORT")) return{col:"gasto",cat:"Transporte"};
   if(t.includes("FARMACIA")||t.includes("FARMÁCIA")||t.includes("FARMA")||t.includes("DROGARIA")||t.includes("MEDICO")||t.includes("MÉDICO")||t.includes("HOSPITAL")||t.includes("CLINICA")||t.includes("CLÍNICA")) return{col:"gasto",cat:"Saúde"};
-  if(t.includes("BRISANET")||t.includes("INTERNET")||t.includes("CLARO")||t.includes("VIVO")||t.includes("TIM")||t.includes("OI")||t.includes("TELEFO")||t.includes("PRE-PAGO")||t.includes("GLOBO")) return{col:"gasto",cat:"Moradia"};
-  if(t.includes("BOLETO")||t.includes("AGUA")||t.includes("ÁGUA")||t.includes("LUZ")||t.includes("ENERGIA")||t.includes("ALUGUEL")||t.includes("CONDOM")) return{col:"gasto",cat:"Moradia"};
+  if(t.includes("BRISANET")||t.includes("INTERNET")||t.includes("CLARO")||t.includes("VIVO")||t.includes("TIM")||t.includes("OI")||t.includes("TELEFO")||t.includes("PRE-PAGO")||t.includes("GLOBO")) return{col:"gasto",cat:"Contas"};
+  if(t.includes("BOLETO")||t.includes("AGUA")||t.includes("ÁGUA")||t.includes("LUZ")||t.includes("ENERGIA")||t.includes("ALUGUEL")||t.includes("CONDOM")) return{col:"gasto",cat:"Contas"};
   if(t.includes("ESCOLA")||t.includes("FACUL")||t.includes("CURSO")||t.includes("LIVRO")||t.includes("EDUCAC")||t.includes("EDUCAÇ")) return{col:"gasto",cat:"Educação"};
-  if(t.includes("CINEMA")||t.includes("THEATER")||t.includes("SHOW")||t.includes("JOGO")||t.includes("SPOTIFY")||t.includes("NETFLIX")||t.includes("AMAZON")) return{col:"gasto",cat:"Lazer"};
-  if(t.includes("TARIFA")||t.includes("IOF")||t.includes("ANUIDADE")) return{col:"gasto",cat:"Outros"};
+  if(t.includes("CINEMA")||t.includes("THEATER")||t.includes("SHOW")||t.includes("JOGO")||t.includes("SPOTIFY")||t.includes("NETFLIX")||t.includes("AMAZON")||t.includes("PRIME")) return{col:"gasto",cat:"Lazer"};
+  if(t.includes("BANCO PAN")||t.includes("EMPRESTIMO")||t.includes("EMPRÉSTIMO")||t.includes("FINANC")||t.includes("PARCELA")||t.includes("FATURA")||t.includes("CREDITO")||t.includes("CRÉDITO")) return{col:"gasto",cat:"Empréstimo/Cartão"};
+  if(t.includes("SHOPEE")||t.includes("MERCADO LIVRE")||t.includes("MERCADOLIVRE")||t.includes("AMAZON")||t.includes("ALIEXPRESS")||t.includes("MAGALU")||t.includes("AMERICANAS")||t.includes("MARKETPLACE")||t.includes("PIX Marketplace")) return{col:"gasto",cat:"E-commerce"};
+  if(t.includes("TARIFA")||t.includes("IOF")||t.includes("ANUIDADE")) return{col:"gasto",cat:"Contas"};
   return{col:"gasto",cat:"Outros"};
 }
 
@@ -281,6 +283,72 @@ function ItemRevisao({item,sel,onToggle,onUpdate,tipo}){
       <input type="date" value={item.data} onChange={e=>onUpdate("data",e.target.value)}
         style={{background:C.border,border:`1px solid ${C.border2}`,borderRadius:8,padding:"5px 8px",color:C.text,fontSize:11,fontFamily:"'DM Mono',monospace"}}/>
       <span style={{fontSize:13,fontWeight:700,color:tipo==="entrada"?C.amber:C.white,fontFamily:"'DM Mono',monospace",textAlign:"right",whiteSpace:"nowrap"}}>{fBRL(item.valor)}</span>
+    </div>
+  );
+}
+
+// ── ItemLancamento com edição inline ─────────────────────
+function ItemLancamento({item,tipo,onDel,onUpdate}){
+  const [aberto,setAberto]=useState(false);
+  const [form,setForm]=useState({descricao:item.descricao,valor:String(item.valor),categoria:item.categoria,data:item.data});
+  const cats=tipo==="gasto"?CATS_GASTO:CATS_ENTRADA;
+  const cat=cats.find(c=>c.nome===item.categoria)||cats[cats.length-1];
+  const corValor=tipo==="entrada"?C.amber:C.white;
+  const corCat=tipo==="entrada"?{background:C.amberLo,color:C.amber}:{background:C.border2,color:C.muted};
+
+  const salvar=async()=>{
+    const v=parseFloat(form.valor.replace(",","."));
+    if(isNaN(v)||v<=0) return;
+    await onUpdate({descricao:form.descricao,valor:v,categoria:form.categoria,data:form.data});
+    setAberto(false);
+  };
+
+  return(
+    <div style={{borderBottom:`1px solid ${C.border}22`,marginBottom:2}}>
+      {/* Linha normal */}
+      <div onClick={()=>setAberto(a=>!a)} className="row-t"
+        style={{display:"grid",gridTemplateColumns:"22px 1fr auto auto",gap:6,padding:"9px 4px",alignItems:"center",cursor:"pointer",borderRadius:8,transition:"background .15s",background:aberto?C.surface2:"transparent"}}>
+        <span style={{fontSize:13,flexShrink:0}}>{cat.emoji}</span>
+        <div style={{minWidth:0}}>
+          <p style={{fontSize:12,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{item.descricao}</p>
+          <p style={{fontSize:10,color:C.muted,fontFamily:"'DM Mono',monospace",marginTop:1}}>{toDate(item.data).toLocaleDateString("pt-BR")} · <span style={{...corCat,padding:"1px 5px",borderRadius:8,fontSize:9}}>{item.categoria}</span></p>
+        </div>
+        <span style={{fontSize:12,color:corValor,fontFamily:"'DM Mono',monospace",fontWeight:700,whiteSpace:"nowrap"}}>{fBRL(item.valor)}</span>
+        <button onClick={e=>{e.stopPropagation();onDel();}} style={{background:"transparent",border:"none",color:C.muted2,fontSize:16,cursor:"pointer",lineHeight:1,padding:"0 2px",transition:"color .15s"}}
+          onMouseEnter={e=>e.currentTarget.style.color=C.danger}
+          onMouseLeave={e=>e.currentTarget.style.color=C.muted2}>×</button>
+      </div>
+
+      {/* Edição inline */}
+      {aberto&&(
+        <div style={{background:C.surface2,border:`1px solid ${C.border2}`,borderRadius:10,padding:"12px 14px",marginBottom:8}}>
+          <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8,marginBottom:8}}>
+            <div>
+              <p style={{fontSize:10,color:C.muted,fontFamily:"'DM Mono',monospace",marginBottom:4}}>DESCRIÇÃO</p>
+              <input className="inp" value={form.descricao} onChange={e=>setForm(f=>({...f,descricao:e.target.value}))} style={{fontSize:12,padding:"7px 10px"}}/>
+            </div>
+            <div>
+              <p style={{fontSize:10,color:C.muted,fontFamily:"'DM Mono',monospace",marginBottom:4}}>VALOR (R$)</p>
+              <input className="inp" value={form.valor} onChange={e=>setForm(f=>({...f,valor:e.target.value}))} style={{fontSize:12,padding:"7px 10px"}}/>
+            </div>
+            <div>
+              <p style={{fontSize:10,color:C.muted,fontFamily:"'DM Mono',monospace",marginBottom:4}}>CATEGORIA</p>
+              <select className="inp" value={form.categoria} onChange={e=>setForm(f=>({...f,categoria:e.target.value}))} style={{fontSize:12,padding:"7px 10px"}}>
+                {cats.map(c=><option key={c.nome} value={c.nome}>{c.emoji} {c.nome}</option>)}
+              </select>
+            </div>
+            <div>
+              <p style={{fontSize:10,color:C.muted,fontFamily:"'DM Mono',monospace",marginBottom:4}}>DATA</p>
+              <input type="date" className="inp" value={form.data} onChange={e=>setForm(f=>({...f,data:e.target.value}))} style={{fontSize:12,padding:"7px 10px"}}/>
+            </div>
+          </div>
+          <div style={{display:"flex",gap:8,justifyContent:"flex-end"}}>
+            <button onClick={()=>onDel()} style={{background:"transparent",border:`1px solid ${C.danger}44`,color:C.danger,padding:"6px 14px",borderRadius:8,cursor:"pointer",fontSize:12,fontFamily:"'DM Mono',monospace"}}>🗑 Excluir</button>
+            <button onClick={()=>setAberto(false)} style={{background:"transparent",border:`1px solid ${C.border2}`,color:C.muted,padding:"6px 14px",borderRadius:8,cursor:"pointer",fontSize:12,fontFamily:"'DM Mono',monospace"}}>Cancelar</button>
+            <button onClick={salvar} style={{background:tipo==="entrada"?C.amber:C.white,color:C.bg,fontWeight:700,padding:"6px 16px",borderRadius:8,border:"none",cursor:"pointer",fontSize:12}}>Salvar</button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -961,9 +1029,215 @@ function MobileApp({gastos,entradas,carregando,onAddGasto,onAddEntrada,onDelGast
 // ══════════════════════════════════════════════════════════
 // DESKTOP
 // ══════════════════════════════════════════════════════════
+// ── PainelReserva ─────────────────────────────────────────
+function PainelReserva({onClose}){
+  const [reserva,   setReserva]   = useState(null);
+  const [meta,      setMeta]      = useState(null);
+  const [historico, setHistorico] = useState([]);
+  const [loading,   setLoading]   = useState(true);
+  const [aba,       setAba]       = useState("visao"); // visao | atualizar | meta
+  const [novoValor, setNovoValor] = useState("");
+  const [novaMeta,  setNovaMeta]  = useState("");
+  const [salvando,  setSalvando]  = useState(false);
+
+  // Carregar dados do Firebase
+  useEffect(()=>{
+    const unsub=onSnapshot(collection(db,"reserva"), snap=>{
+      const docs=snap.docs.map(d=>({id:d.id,...d.data()}));
+      const snapshots=docs.filter(d=>d.tipo==="snapshot").sort((a,b)=>new Date(b.data)-new Date(a.data));
+      const metaDoc=docs.find(d=>d.tipo==="meta");
+      if(snapshots.length>0){
+        setReserva(snapshots[0].valor);
+        setHistorico(snapshots.slice(0,12));
+      }
+      if(metaDoc) setMeta(metaDoc.valor);
+      setLoading(false);
+    });
+    return()=>unsub();
+  },[]);
+
+  const salvarValor=async()=>{
+    const v=parseFloat(novoValor.replace(",","."));
+    if(isNaN(v)||v<0) return;
+    setSalvando(true);
+    const hoje=today();
+    await addDoc(collection(db,"reserva"),{tipo:"snapshot",valor:v,data:hoje});
+    setNovoValor("");
+    setSalvando(false);
+    setAba("visao");
+  };
+
+  const salvarMeta=async()=>{
+    const v=parseFloat(novaMeta.replace(",","."));
+    if(isNaN(v)||v<=0) return;
+    setSalvando(true);
+    // Buscar doc de meta existente para sobrescrever
+    const snap=await getDocs(collection(db,"reserva"));
+    const metaDoc=snap.docs.find(d=>d.data().tipo==="meta");
+    if(metaDoc){
+      await updateDoc(doc(db,"reserva",metaDoc.id),{valor:v});
+    } else {
+      await addDoc(collection(db,"reserva"),{tipo:"meta",valor:v});
+    }
+    setNovaMeta("");
+    setSalvando(false);
+    setAba("visao");
+  };
+
+  const pctMeta = meta&&reserva ? Math.min((reserva/meta)*100,100) : 0;
+  const corMeta = pctMeta>=100?C.amber:pctMeta>=60?C.warn:"#4ade80";
+  const anterior = historico.length>1?historico[1].valor:null;
+  const variacao = reserva!=null&&anterior!=null?reserva-anterior:null;
+
+  return(
+    <div style={{position:"fixed",inset:0,background:"#000000bb",zIndex:200,display:"flex",alignItems:"stretch",justifyContent:"flex-end"}} onClick={onClose}>
+      <div style={{width:"min(480px,92vw)",background:C.bg,borderLeft:`1px solid ${C.border}`,display:"flex",flexDirection:"column",overflow:"hidden"}} onClick={e=>e.stopPropagation()}>
+
+        {/* Header */}
+        <div style={{padding:"20px 26px",borderBottom:`1px solid ${C.border}`,display:"flex",justifyContent:"space-between",alignItems:"center",background:C.surface,flexShrink:0}}>
+          <div>
+            <h2 style={{fontFamily:"'Playfair Display',serif",fontSize:20,fontWeight:700}}>Reserva <span style={{color:C.amber}}>Financeira</span></h2>
+            <p style={{fontSize:11,color:C.muted,fontFamily:"'DM Mono',monospace",marginTop:3}}>saldo atual · meta · histórico</p>
+          </div>
+          <button onClick={onClose} style={{background:C.border,border:"none",color:C.muted,borderRadius:10,padding:"7px 13px",cursor:"pointer",fontSize:18,lineHeight:1}}>✕</button>
+        </div>
+
+        {/* Abas */}
+        <div style={{display:"flex",gap:3,padding:"12px 26px",borderBottom:`1px solid ${C.border}`,background:C.surface,flexShrink:0}}>
+          {[["visao","👁 Visão"],["atualizar","✏️ Atualizar"],["meta","🎯 Meta"]].map(([k,l])=>(
+            <button key={k} onClick={()=>setAba(k)} style={{background:aba===k?C.amber:C.border,color:aba===k?C.bg:C.muted,border:"none",borderRadius:8,padding:"6px 14px",cursor:"pointer",fontSize:12,fontFamily:"'DM Mono',monospace",fontWeight:aba===k?700:400,transition:"all .15s"}}>{l}</button>
+          ))}
+        </div>
+
+        <div style={{flex:1,overflowY:"auto",padding:"24px 26px"}}>
+          {loading&&<p style={{color:C.muted,textAlign:"center",padding:"40px 0",fontFamily:"'DM Mono',monospace"}}>Carregando...</p>}
+
+          {/* Aba: Visão */}
+          {!loading&&aba==="visao"&&(
+            <div style={{display:"flex",flexDirection:"column",gap:20}}>
+
+              {/* Valor atual */}
+              <Card style={{padding:24,textAlign:"center"}}>
+                {reserva!=null?(
+                  <>
+                    <p style={{fontSize:11,color:C.muted,fontFamily:"'DM Mono',monospace",marginBottom:8,textTransform:"uppercase",letterSpacing:"0.1em"}}>Reserva atual</p>
+                    <p style={{fontFamily:"'Playfair Display',serif",fontSize:38,fontWeight:700,color:C.amber,lineHeight:1}}>{fBRL(reserva)}</p>
+                    {variacao!=null&&(
+                      <p style={{fontSize:12,color:variacao>=0?"#4ade80":C.danger,fontFamily:"'DM Mono',monospace",marginTop:10}}>
+                        {variacao>=0?"▲":"▼"} {fBRL(Math.abs(variacao))} desde o último registro
+                      </p>
+                    )}
+                  </>
+                ):(
+                  <div>
+                    <p style={{fontSize:32,marginBottom:12}}>🏦</p>
+                    <p style={{color:C.muted,fontSize:14,fontFamily:"'DM Mono',monospace",marginBottom:16}}>Nenhum valor registrado ainda</p>
+                    <button onClick={()=>setAba("atualizar")} style={{background:C.amber,color:C.bg,fontWeight:700,padding:"10px 24px",borderRadius:10,border:"none",cursor:"pointer",fontSize:13}}>Registrar agora</button>
+                  </div>
+                )}
+              </Card>
+
+              {/* Barra de meta */}
+              {meta&&reserva!=null&&(
+                <Card style={{padding:20}}>
+                  <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:10}}>
+                    <p style={{fontSize:12,color:C.muted,fontFamily:"'DM Mono',monospace",textTransform:"uppercase",letterSpacing:"0.08em"}}>🎯 Meta</p>
+                    <p style={{fontSize:13,color:C.white,fontFamily:"'DM Mono',monospace",fontWeight:700}}>{fBRL(meta)}</p>
+                  </div>
+                  <div style={{background:C.border,borderRadius:99,height:12,marginBottom:10,overflow:"hidden"}}>
+                    <div style={{width:`${pctMeta}%`,background:corMeta,height:"100%",borderRadius:99,transition:"width .6s ease"}}/>
+                  </div>
+                  <div style={{display:"flex",justifyContent:"space-between"}}>
+                    <span style={{fontSize:11,color:C.muted,fontFamily:"'DM Mono',monospace"}}>{pctMeta.toFixed(1)}% atingido</span>
+                    {pctMeta<100&&<span style={{fontSize:11,color:C.muted,fontFamily:"'DM Mono',monospace"}}>faltam {fBRL(meta-reserva)}</span>}
+                    {pctMeta>=100&&<span style={{fontSize:11,color:C.amber,fontFamily:"'DM Mono',monospace"}}>✦ Meta atingida!</span>}
+                  </div>
+                </Card>
+              )}
+
+              {/* Sem meta */}
+              {!meta&&reserva!=null&&(
+                <button onClick={()=>setAba("meta")} style={{background:"transparent",border:`1px dashed ${C.border2}`,color:C.muted,borderRadius:12,padding:"14px",cursor:"pointer",fontSize:13,fontFamily:"'DM Mono',monospace",width:"100%"}}>
+                  🎯 Definir uma meta de reserva
+                </button>
+              )}
+
+              {/* Histórico */}
+              {historico.length>0&&(
+                <Card style={{padding:20}}>
+                  <p style={{fontSize:11,color:C.muted,fontFamily:"'DM Mono',monospace",textTransform:"uppercase",letterSpacing:"0.08em",marginBottom:14}}>Histórico de registros</p>
+                  {historico.map((h,i)=>{
+                    const varH=i<historico.length-1?h.valor-historico[i+1].valor:null;
+                    return(
+                      <div key={h.id} style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"8px 0",borderBottom:i<historico.length-1?`1px solid ${C.border}18`:"none"}}>
+                        <span style={{fontSize:11,color:C.muted,fontFamily:"'DM Mono',monospace"}}>{toDate(h.data).toLocaleDateString("pt-BR")}</span>
+                        <div style={{display:"flex",alignItems:"center",gap:10}}>
+                          {varH!=null&&<span style={{fontSize:10,color:varH>=0?"#4ade80":C.danger,fontFamily:"'DM Mono',monospace"}}>{varH>=0?"+":""}{fBRL(varH)}</span>}
+                          <span style={{fontSize:13,color:i===0?C.amber:C.muted,fontFamily:"'DM Mono',monospace",fontWeight:i===0?700:400}}>{fBRL(h.valor)}</span>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </Card>
+              )}
+            </div>
+          )}
+
+          {/* Aba: Atualizar */}
+          {!loading&&aba==="atualizar"&&(
+            <div style={{display:"flex",flexDirection:"column",gap:16}}>
+              <Card style={{padding:20}}>
+                <p style={{fontSize:13,color:C.muted,fontFamily:"'DM Mono',monospace",marginBottom:20,lineHeight:1.6}}>
+                  Informe o saldo atual da sua reserva. Um novo registro será salvo com a data de hoje.
+                </p>
+                {reserva!=null&&(
+                  <div style={{background:C.surface2,borderRadius:10,padding:"12px 16px",marginBottom:16,display:"flex",justifyContent:"space-between"}}>
+                    <span style={{fontSize:12,color:C.muted,fontFamily:"'DM Mono',monospace"}}>Valor atual</span>
+                    <span style={{fontSize:13,color:C.amber,fontFamily:"'DM Mono',monospace",fontWeight:700}}>{fBRL(reserva)}</span>
+                  </div>
+                )}
+                <p style={{fontSize:10,color:C.muted,fontFamily:"'DM Mono',monospace",marginBottom:6,textTransform:"uppercase",letterSpacing:"0.08em"}}>Novo saldo (R$)</p>
+                <input className="inp" placeholder="ex: 3500.00" value={novoValor}
+                  onChange={e=>setNovoValor(e.target.value)}
+                  onKeyDown={e=>e.key==="Enter"&&salvarValor()}
+                  style={{marginBottom:16,fontSize:20,textAlign:"center",letterSpacing:"0.05em"}}/>
+                <button onClick={salvarValor} disabled={salvando||!novoValor}
+                  style={{background:novoValor?C.amber:"#333",color:C.bg,fontWeight:700,padding:"12px",borderRadius:10,border:"none",cursor:novoValor?"pointer":"not-allowed",fontSize:14,width:"100%",transition:"background .2s"}}>
+                  {salvando?"Salvando...":"Salvar registro"}
+                </button>
+              </Card>
+            </div>
+          )}
+
+          {/* Aba: Meta */}
+          {!loading&&aba==="meta"&&(
+            <div style={{display:"flex",flexDirection:"column",gap:16}}>
+              <Card style={{padding:20}}>
+                <p style={{fontSize:13,color:C.muted,fontFamily:"'DM Mono',monospace",marginBottom:20,lineHeight:1.6}}>
+                  {meta?`Meta atual: ${fBRL(meta)}. Digite um novo valor para alterar.`:"Defina quanto você quer ter guardado como reserva de emergência."}
+                </p>
+                <p style={{fontSize:10,color:C.muted,fontFamily:"'DM Mono',monospace",marginBottom:6,textTransform:"uppercase",letterSpacing:"0.08em"}}>Meta de reserva (R$)</p>
+                <input className="inp" placeholder={meta?String(meta):"ex: 10000"} value={novaMeta}
+                  onChange={e=>setNovaMeta(e.target.value)}
+                  onKeyDown={e=>e.key==="Enter"&&salvarMeta()}
+                  style={{marginBottom:8,fontSize:20,textAlign:"center",letterSpacing:"0.05em"}}/>
+                <p style={{fontSize:11,color:C.muted2,fontFamily:"'DM Mono',monospace",marginBottom:16,textAlign:"center"}}>💡 Especialistas recomendam 3 a 6 meses de despesas</p>
+                <button onClick={salvarMeta} disabled={salvando||!novaMeta}
+                  style={{background:novaMeta?C.amber:"#333",color:C.bg,fontWeight:700,padding:"12px",borderRadius:10,border:"none",cursor:novaMeta?"pointer":"not-allowed",fontSize:14,width:"100%",transition:"background .2s"}}>
+                  {salvando?"Salvando...":"Definir meta"}
+                </button>
+              </Card>
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 const lbl={fontSize:11,color:"#505050",fontFamily:"'DM Mono',monospace",textTransform:"uppercase",letterSpacing:"0.08em",display:"block",marginBottom:7};
 
-function DesktopApp({gastos,entradas,carregando,onAddGasto,onAddEntrada,onDelGasto,onDelEntrada}){
+function DesktopApp({gastos,entradas,carregando,onAddGasto,onAddEntrada,onDelGasto,onDelEntrada,onUpdateGasto,onUpdateEntrada}){
   const hoje=new Date();
   const [mes,setMes]=useState(hoje.getMonth());
   const [ano,setAno]=useState(hoje.getFullYear());
@@ -971,6 +1245,7 @@ function DesktopApp({gastos,entradas,carregando,onAddGasto,onAddEntrada,onDelGas
   const [showForm,setShowForm]=useState(false);
   const [showPeriodo,setShowPeriodo]=useState(false);
   const [showImport,setShowImport]=useState(false);
+  const [showReserva,setShowReserva]=useState(false);
   const [formG,setFormG]=useState({descricao:"",valor:"",categoria:"Alimentação",data:today()});
   const [formE,setFormE]=useState({descricao:"Salário",valor:"",categoria:"Salário",data:today()});
 
@@ -979,6 +1254,13 @@ function DesktopApp({gastos,entradas,carregando,onAddGasto,onAddEntrada,onDelGas
   const totalG=gastosMes.reduce((s,g)=>s+g.valor,0);
   const totalE=entradasMes.reduce((s,e)=>s+e.valor,0);
   const saldo=totalE-totalG;
+  const saldoAcum=useMemo(()=>{
+    const limite=new Date(ano,mes,1);
+    const tE=entradas.filter(e=>toDate(e.data)<limite).reduce((s,e)=>s+e.valor,0);
+    const tG=gastos.filter(g=>toDate(g.data)<limite).reduce((s,g)=>s+g.valor,0);
+    return tE-tG;
+  },[gastos,entradas,mes,ano]);
+  const saldoTotal=saldo+saldoAcum;
   const pctReal=totalE>0?(totalG/totalE)*100:0;
   const saude=getSaude(pctReal,saldo);
   const corB=pctReal>85?C.danger:pctReal>60?C.warn:C.amber;
@@ -1021,6 +1303,7 @@ function DesktopApp({gastos,entradas,carregando,onAddGasto,onAddEntrada,onDelGas
           <div style={{width:1,height:20,background:C.border}}/>
           <button onClick={()=>setShowPeriodo(true)} style={{background:"transparent",border:`1px solid ${C.amber}55`,color:C.amber,fontWeight:600,padding:"7px 16px",borderRadius:9,fontSize:13,cursor:"pointer",whiteSpace:"nowrap",fontFamily:"'DM Mono',monospace"}}>📊 Análise</button>
           <button onClick={()=>setShowImport(true)} style={{background:"transparent",border:`1px solid ${C.border2}`,color:C.muted,fontWeight:600,padding:"7px 16px",borderRadius:9,fontSize:13,cursor:"pointer",whiteSpace:"nowrap",fontFamily:"'DM Mono',monospace"}}>📥 OFX</button>
+          <button onClick={()=>setShowReserva(true)} style={{background:"transparent",border:`1px solid #4ade8033`,color:"#4ade80",fontWeight:600,padding:"7px 16px",borderRadius:9,fontSize:13,cursor:"pointer",whiteSpace:"nowrap",fontFamily:"'DM Mono',monospace"}}>🏦 Reserva</button>
           <div style={{width:1,height:20,background:C.border}}/>
           <button onClick={()=>{setAbaForm("gasto");setShowForm(abaForm==="gasto"?!showForm:true);}} style={{background:showForm&&abaForm==="gasto"?C.border2:C.white,color:C.bg,fontWeight:700,padding:"8px 18px",borderRadius:10,border:"none",fontSize:13,cursor:"pointer",transition:"all .2s",whiteSpace:"nowrap"}}>
             {showForm&&abaForm==="gasto"?"✕ Fechar":"− Gasto"}
@@ -1080,11 +1363,11 @@ function DesktopApp({gastos,entradas,carregando,onAddGasto,onAddEntrada,onDelGas
         {/* KPIs */}
         <div style={{display:"grid",gridTemplateColumns:"repeat(5,1fr)",gap:12,flexShrink:0}}>
           {[
-            {label:"Entradas",    valor:totalE,   cor:C.amber,                sub:`${entradasMes.length} registro(s)`},
-            {label:"Total gasto", valor:totalG,   cor:C.white,                sub:`${gastosMes.length} lançamento(s)`},
-            {label:"Saldo",       valor:saldo,     cor:saldo>=0?C.amber:C.danger, sub:saldo>=0?"positivo ✦":"negativo ⚠"},
+            {label:"Entradas",    valor:totalE,      cor:C.amber,                        sub:`${entradasMes.length} registro(s)`},
+            {label:"Total gasto", valor:totalG,      cor:C.white,                        sub:`${gastosMes.length} lançamento(s)`},
+            {label:"Saldo acumulado", valor:saldoTotal, cor:saldoTotal>=0?C.amber:C.danger, sub:`mês: ${fBRL(saldo)}`},
             {label:"Maior gasto", valor:gastosMes.length?Math.max(...gastosMes.map(g=>g.valor)):0, cor:C.muted, sub:gastosMes.length?[...gastosMes].sort((a,b)=>b.valor-a.valor)[0]?.descricao||"—":"—"},
-            {label:"Média/dia",   valor:mediaDia,  cor:C.muted,               sub:`base: ${diasMes} dia${diasMes>1?"s":""}`},
+            {label:"Média/dia",   valor:mediaDia,    cor:C.muted,                        sub:`base: ${diasMes} dia${diasMes>1?"s":""}`},
           ].map(item=>(
             <Card key={item.label} style={{padding:"16px 18px"}}>
               <Lbl>{item.label}</Lbl>
@@ -1127,48 +1410,41 @@ function DesktopApp({gastos,entradas,carregando,onAddGasto,onAddEntrada,onDelGas
             </Card>
           </div>
 
-          {/* Col 2: lançamentos */}
-          <Card style={{padding:"18px 20px",display:"flex",flexDirection:"column",minHeight:0,overflow:"hidden"}}>
-            <p style={{fontFamily:"'Playfair Display',serif",fontSize:17,marginBottom:14,flexShrink:0}}>Lançamentos de {MESES[mes]}</p>
-            <div style={{display:"grid",gridTemplateColumns:"2fr 1fr 1fr 88px 24px",gap:6,padding:"0 0 8px",borderBottom:`1px solid ${C.border}`,flexShrink:0}}>
-              {["Descrição","Categoria","Data","Valor",""].map((h,i)=>(
-                <span key={i} style={{fontSize:10,color:C.muted2,fontFamily:"'DM Mono',monospace",textTransform:"uppercase",letterSpacing:"0.07em"}}>{h}</span>
-              ))}
-            </div>
-            <div style={{flex:1,overflowY:"auto",marginTop:4}}>
-              {carregando&&<p style={{color:C.muted,fontSize:13,textAlign:"center",padding:"20px 0"}}>Carregando...</p>}
-              {[...gastosMes].sort((a,b)=>new Date(b.data)-new Date(a.data)).map(g=>{
-                const cat=CATS_GASTO.find(c=>c.nome===g.categoria)||CATS_GASTO[6];
-                return(
-                  <div key={g.id} className="row-t" style={{display:"grid",gridTemplateColumns:"2fr 1fr 1fr 88px 24px",gap:6,padding:"10px 0",borderBottom:`1px solid ${C.border}18`,alignItems:"center"}}>
-                    <div style={{display:"flex",alignItems:"center",gap:7,minWidth:0}}><span style={{fontSize:14,flexShrink:0}}>{cat.emoji}</span><span style={{fontSize:13,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{g.descricao}</span></div>
-                    <span style={{padding:"2px 8px",borderRadius:20,fontSize:10,background:C.border2,color:C.muted,fontFamily:"'DM Mono',monospace",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",display:"block"}}>{g.categoria}</span>
-                    <span style={{fontSize:11,color:C.muted,fontFamily:"'DM Mono',monospace"}}>{toDate(g.data).toLocaleDateString("pt-BR")}</span>
-                    <span style={{fontSize:13,color:C.white,fontFamily:"'DM Mono',monospace",textAlign:"right",whiteSpace:"nowrap"}}>{fBRL(g.valor)}</span>
-                    <button onClick={()=>onDelGasto(g.id)} className="del" style={{opacity:0,background:"transparent",border:"none",color:C.danger,fontSize:16,cursor:"pointer",transition:"opacity .2s"}}>×</button>
-                  </div>
-                );
-              })}
-              {entradasMes.length>0&&(
-                <>
-                  <div style={{padding:"12px 0 6px"}}><span style={{fontSize:10,color:C.amber,fontFamily:"'DM Mono',monospace",textTransform:"uppercase",letterSpacing:"0.1em"}}>entradas</span></div>
-                  {[...entradasMes].sort((a,b)=>new Date(b.data)-new Date(a.data)).map(e=>{
-                    const cat=CATS_ENTRADA.find(c=>c.nome===e.categoria)||CATS_ENTRADA[4];
-                    return(
-                      <div key={e.id} className="row-t" style={{display:"grid",gridTemplateColumns:"2fr 1fr 1fr 88px 24px",gap:6,padding:"10px 0",borderBottom:`1px solid ${C.border}18`,alignItems:"center"}}>
-                        <div style={{display:"flex",alignItems:"center",gap:7,minWidth:0}}><span style={{fontSize:14,flexShrink:0}}>{cat.emoji}</span><span style={{fontSize:13,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{e.descricao}</span></div>
-                        <span style={{padding:"2px 8px",borderRadius:20,fontSize:10,background:C.amberLo,color:C.amber,fontFamily:"'DM Mono',monospace",display:"block"}}>{e.categoria}</span>
-                        <span style={{fontSize:11,color:C.muted,fontFamily:"'DM Mono',monospace"}}>{toDate(e.data).toLocaleDateString("pt-BR")}</span>
-                        <span style={{fontSize:13,color:C.amber,fontFamily:"'DM Mono',monospace",textAlign:"right",whiteSpace:"nowrap"}}>{fBRL(e.valor)}</span>
-                        <button onClick={()=>onDelEntrada(e.id)} className="del" style={{opacity:0,background:"transparent",border:"none",color:C.danger,fontSize:16,cursor:"pointer",transition:"opacity .2s"}}>×</button>
-                      </div>
-                    );
-                  })}
-                </>
-              )}
-              {gastosMes.length===0&&entradasMes.length===0&&!carregando&&<p style={{color:C.muted,fontSize:13,textAlign:"center",padding:"20px 0"}}>Nenhum lançamento este mês</p>}
-            </div>
-          </Card>
+          {/* Col 2: lançamentos lado a lado */}
+          <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12,minHeight:0,overflow:"hidden"}}>
+            {/* Gastos */}
+            <Card style={{padding:"16px 18px",display:"flex",flexDirection:"column",minHeight:0,overflow:"hidden"}}>
+              <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:12,flexShrink:0}}>
+                <p style={{fontFamily:"'Playfair Display',serif",fontSize:15}}>💸 Gastos <span style={{fontSize:11,color:C.muted,fontFamily:"'DM Mono',monospace"}}>({gastosMes.length})</span></p>
+                <span style={{fontSize:12,color:C.white,fontFamily:"'DM Mono',monospace",fontWeight:700}}>{fBRL(totalG)}</span>
+              </div>
+              <div style={{flex:1,overflowY:"auto"}}>
+                {carregando&&<p style={{color:C.muted,fontSize:12,textAlign:"center",padding:"16px 0"}}>Carregando...</p>}
+                {gastosMes.length===0&&!carregando&&<p style={{color:C.muted,fontSize:12,textAlign:"center",padding:"16px 0"}}>Nenhum gasto este mês</p>}
+                {[...gastosMes].sort((a,b)=>new Date(b.data)-new Date(a.data)).map(g=>(
+                  <ItemLancamento key={g.id} item={g} tipo="gasto"
+                    onDel={()=>onDelGasto(g.id)}
+                    onUpdate={(d)=>onUpdateGasto(g.id,d)}/>
+                ))}
+              </div>
+            </Card>
+            {/* Entradas */}
+            <Card style={{padding:"16px 18px",display:"flex",flexDirection:"column",minHeight:0,overflow:"hidden"}}>
+              <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:12,flexShrink:0}}>
+                <p style={{fontFamily:"'Playfair Display',serif",fontSize:15}}>💰 Entradas <span style={{fontSize:11,color:C.muted,fontFamily:"'DM Mono',monospace"}}>({entradasMes.length})</span></p>
+                <span style={{fontSize:12,color:C.amber,fontFamily:"'DM Mono',monospace",fontWeight:700}}>{fBRL(totalE)}</span>
+              </div>
+              <div style={{flex:1,overflowY:"auto"}}>
+                {carregando&&<p style={{color:C.muted,fontSize:12,textAlign:"center",padding:"16px 0"}}>Carregando...</p>}
+                {entradasMes.length===0&&!carregando&&<p style={{color:C.muted,fontSize:12,textAlign:"center",padding:"16px 0"}}>Nenhuma entrada este mês</p>}
+                {[...entradasMes].sort((a,b)=>new Date(b.data)-new Date(a.data)).map(e=>(
+                  <ItemLancamento key={e.id} item={e} tipo="entrada"
+                    onDel={()=>onDelEntrada(e.id)}
+                    onUpdate={(d)=>onUpdateEntrada(e.id,d)}/>
+                ))}
+              </div>
+            </Card>
+          </div>
 
           {/* Col 3 */}
           <PainelSaude pct={pctReal} saldo={saldo} gastosMes={gastosMes} renda={totalE}/>
@@ -1177,6 +1453,7 @@ function DesktopApp({gastos,entradas,carregando,onAddGasto,onAddEntrada,onDelGas
 
       {showPeriodo&&<PainelPeriodo gastos={gastos} entradas={entradas} onClose={()=>setShowPeriodo(false)}/>}
       {showImport&&<PainelImportOFX onClose={()=>setShowImport(false)} onSalvar={async(tipo,d)=>{if(tipo==="gasto")await onAddGasto(d);else await onAddEntrada(d);}}/>}
+      {showReserva&&<PainelReserva onClose={()=>setShowReserva(false)}/>}
     </div>
   );
 }
@@ -1201,7 +1478,9 @@ export default function App(){
   const onAddEntrada =(d)=>addDoc(collection(db,"entradas"),d);
   const onDelGasto   =(id)=>deleteDoc(doc(db,"gastos",  id));
   const onDelEntrada =(id)=>deleteDoc(doc(db,"entradas",id));
-  const props={gastos,entradas,carregando,onAddGasto,onAddEntrada,onDelGasto,onDelEntrada};
+  const onUpdateGasto  =(id,d)=>updateDoc(doc(db,"gastos",  id),d);
+  const onUpdateEntrada=(id,d)=>updateDoc(doc(db,"entradas",id),d);
+  const props={gastos,entradas,carregando,onAddGasto,onAddEntrada,onDelGasto,onDelEntrada,onUpdateGasto,onUpdateEntrada};
 
   return(
     <>
